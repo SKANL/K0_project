@@ -18,17 +18,22 @@ import {
   type IntegrationProviderPort,
   type IntegrationCapabilityContract,
 } from "../../packages/adapters/src/integrations/index.js";
-import { createApprovedVaultHostFactory, createProtectedVaultPort, createTestOnlyInMemoryVault, VaultHostPlatform } from "../../packages/assurance/src/index.js";
+import { createApprovedOsProtectedVaultPort, createApprovedVaultHostFactory, createTestOnlyInMemoryVault, VaultHostPlatform } from "../../packages/assurance/src/index.js";
 
 const modules = import.meta.glob("../../convex/**/*.ts");
 const NOW = 1_741_506_400_000;
 
 function testProductionVault() {
   const values = new Map<string, string>();
-  return createProtectedVaultPort({
+  return createApprovedOsProtectedVaultPort({
+    platform: VaultHostPlatform.WindowsCredentialManager,
+    approval: { status: "approved", approvedBy: "security", approvedAt: 1 },
     backend: { platform: "windows", provider: "windows-credential-manager", version: "1.0.0", approval: "approved" },
-    put: (tenantId, key, value) => values.set(`${tenantId}\u0000${key}`, value),
-    get: (tenantId, key) => values.get(`${tenantId}\u0000${key}`)
+    host: {
+      backend: { platform: "windows", provider: "windows-credential-manager", version: "1.0.0", approval: "approved" },
+      put: (tenantId, key, value) => values.set(`${tenantId}\u0000${key}`, value),
+      get: (tenantId, key) => values.get(`${tenantId}\u0000${key}`)
+    }
   });
 }
 
@@ -191,24 +196,27 @@ describe("integration remediation", () => {
   });
 
   it("R3/R15: requires an approved vault-host factory and resolves every provider credential by tenant reference when executing", async () => {
-    expect(() => createProductionIntegrationAdapters({} as any)).toThrow("VAULT_HOST_FACTORY_REQUIRED");
-    expect(() => createProductionIntegrationAdapterRegistry({ vaultHostFactory: { boundary: "production", platform: "windows-credential-manager", approval: { status: "pending" }, createHost: () => ({}) } } as any)).toThrow("VAULT_HOST_FACTORY_UNAPPROVED");
+    expect(() => createProductionIntegrationAdapters({} as any)).toThrow("APPROVED_OS_PROTECTED_VAULT_REQUIRED");
+    expect(() => createProductionIntegrationAdapterRegistry({ vault: testProductionVaultHostFactory() } as any)).toThrow("APPROVED_OS_PROTECTED_VAULT_REQUIRED");
     const testOnlyVault = createTestOnlyInMemoryVault({ supported: true });
-    expect(() => createProductionIntegrationAdapters({ vaultHostFactory: testOnlyVault } as any)).toThrow("VAULT_HOST_FACTORY_UNAPPROVED");
+    expect(() => createProductionIntegrationAdapters({ vault: testOnlyVault } as any)).toThrow("APPROVED_OS_PROTECTED_VAULT_REQUIRED");
     expect(() => createComposioAdapter({ vault: testOnlyVault, toolkitVersion: "2026.9.1" } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
     expect(() => createSendblueAdapter({ vault: testOnlyVault } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
     expect(() => createAppleAdapter({ vault: testOnlyVault } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
-    const vaultHostFactory = testProductionVaultHostFactory();
-    const vault = createProtectedVaultPort(vaultHostFactory.createHost());
+    const vault = testProductionVault();
     for (const providerName of ["composio", "sendblue", "apple"] as const) vault.put("tenant-a", providerName, `${providerName}-credential`);
     const credentials: string[] = [];
     const registry = createProductionIntegrationAdapterRegistry({
-      vaultHostFactory,
+      vault,
       composio: { toolkitVersion: "2026.9.1", connect: async () => "composio-account", execute: async (input: any) => { credentials.push(input.credential); return { state: "sent", costMicros: 1, latencyMs: 1 }; }, reconcile: async () => ({ state: "sent" }) },
       sendblue: { connect: async () => "sendblue-account", lookupDestinationCapability: async () => ({ capable: true }), send: async (input: any) => { credentials.push(input.credential); return { state: "sent", costMicros: 1, latencyMs: 1 }; }, status: async () => ({ state: "sent" }) },
       apple: { execute: async (input: any) => { credentials.push(input.credential); return { state: "sent", costMicros: 0, latencyMs: 0 }; } }
     });
     expect(Object.keys(registry.adapters).sort()).toEqual(["apple", "composio", "sendblue"]);
+    expect(registry.capabilities).toEqual(["composio", "sendblue", "apple", "browser", "model", "storage", "telemetry", "convex"]);
+    for (const capabilityName of registry.capabilities) {
+      expect(registry.registry.describe(capabilityName)).toMatchObject({ name: capabilityName, credentialReference: `vault://${capabilityName}` });
+    }
     for (const [providerName, adapter] of Object.entries(registry.adapters)) {
       expect(adapter).toMatchObject({ provider: providerName });
       expect(adapter.toolkitVersion).toEqual(expect.any(String));

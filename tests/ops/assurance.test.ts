@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalReleaseManifest, createApprovedVaultHostFactory, createTestOnlyInMemoryVault, createProtectedVaultPort, createReleaseController, createAdapterRegistry, createCommercialLedger, createPrivacyController, createEncryptedBackupCoordinator, createMigrationController, createSetupDiagnostics, verifyReleaseManifest, type SignatureVerifierPort, VaultHostPlatform } from "../../packages/assurance/src/index.js";
+import { canonicalReleaseManifest, createApprovedOsProtectedVaultPort, createApprovedVaultHostFactory, createTestOnlyInMemoryVault, createProtectedVaultPort, createReleaseController, createAdapterRegistry, createCommercialLedger, createPrivacyController, createEncryptedBackupCoordinator, createMigrationController, createSetupDiagnostics, verifyReleaseManifest, type SignatureVerifierPort, VaultHostPlatform } from "../../packages/assurance/src/index.js";
 
 describe("commercial assurance controls", () => {
   it("fails closed when the protected vault is unsupported and never returns a secret", () => {
@@ -102,6 +102,31 @@ describe("commercial assurance controls", () => {
       expect(factory.boundary).toBe("production");
       expect(factory.platform).toBe(platform);
       expect(createProtectedVaultPort(factory.createHost()).backend.provider).toBe(platform);
+    }
+  });
+
+  it("R3: brands only approved OS-protected vaults with matching platform backends and rejects test-only hosts", () => {
+    const values = new Map<string, string>();
+    expect(() => createApprovedOsProtectedVaultPort({
+      platform: VaultHostPlatform.WindowsCredentialManager,
+      approval: { status: "approved", approvedBy: "security", approvedAt: 1 },
+      backend: { platform: "windows", provider: "windows-credential-manager", version: "1.0.0", approval: "approved" },
+      host: createTestOnlyInMemoryVault({ supported: true })
+    } as any)).toThrow("VAULT_TEST_ONLY_HOST_DENIED");
+    for (const [platform, backend] of [[VaultHostPlatform.WindowsCredentialManager, { platform: "windows", provider: "windows-credential-manager" }], [VaultHostPlatform.MacosKeychain, { platform: "macos", provider: "macos-keychain" }], [VaultHostPlatform.LinuxSecretService, { platform: "linux", provider: "linux-secret-service" }]] as const) {
+      const vault = createApprovedOsProtectedVaultPort({
+        platform,
+        approval: { status: "approved", approvedBy: "security", approvedAt: 1 },
+        backend: { ...backend, version: "1.0.0", approval: "approved" },
+        host: {
+          backend: { ...backend, version: "1.0.0", approval: "approved" },
+          put: (tenantId, key, value) => values.set(`${tenantId}\u0000${key}`, value),
+          get: (tenantId, key) => values.get(`${tenantId}\u0000${key}`)
+        }
+      });
+      vault.put("tenant-a", "credential", platform);
+      expect(vault).toMatchObject({ boundary: "production", backend: { provider: platform }, approval: { status: "approved", approvedBy: "security" } });
+      expect(vault.get("tenant-a", "credential")).toEqual({ status: "available", value: platform });
     }
   });
 

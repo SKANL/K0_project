@@ -11,7 +11,12 @@ export type TestOnlyInMemoryVaultPort = VaultAccessPort & Readonly<{ boundary: "
 export type ProtectedVault = ProtectedVaultPort;
 export type ProtectedVaultHost = Readonly<{ backend: ApprovedVaultBackend; put(tenantId: string, key: string, value: string): void; get(tenantId: string, key: string): string | undefined }>;
 export type ApprovedVaultHostFactory = Readonly<{ boundary: "production"; platform: VaultHostPlatform; approval: VaultHostApproval; createHost(): ProtectedVaultHost }>;
+/** A process-local brand issued only after an approved OS backend and host have been verified together. */
+export type ApprovedOsProtectedVaultPort = ProtectedVaultPort & Readonly<{ approval: VaultHostApproval }>;
+export type ApprovedOsProtectedVaultInput = Readonly<{ platform: VaultHostPlatform; approval: VaultHostApproval; backend: ApprovedVaultBackend; host: ProtectedVaultHost }>;
 const approvedVaultProviders: Readonly<Record<VaultPlatform, ApprovedVaultBackendProvider>> = Object.freeze({ windows: "windows-credential-manager", macos: "macos-keychain", linux: "linux-secret-service" });
+const approvedVaultPlatforms: Readonly<Record<VaultHostPlatform, VaultPlatform>> = Object.freeze({ [VaultHostPlatform.WindowsCredentialManager]: "windows", [VaultHostPlatform.MacosKeychain]: "macos", [VaultHostPlatform.LinuxSecretService]: "linux" });
+const approvedOsProtectedVaults = new WeakSet<object>();
 export function isApprovedVaultBackend(value: unknown): value is ApprovedVaultBackend {
   if (!value || typeof value !== "object") return false;
   const backend = value as Partial<ApprovedVaultBackend>;
@@ -25,6 +30,9 @@ export function isApprovedVaultHostFactory(value: unknown): value is ApprovedVau
   const factory = value as Partial<ApprovedVaultHostFactory>;
   return factory.boundary === "production" && Object.values(VaultHostPlatform).includes(factory.platform as VaultHostPlatform) && !!factory.approval && factory.approval.status === "approved" && typeof factory.approval.approvedBy === "string" && factory.approval.approvedBy.length > 0 && Number.isFinite(factory.approval.approvedAt) && (factory.approval.approvedAt ?? 0) > 0 && typeof factory.createHost === "function";
 }
+export function isApprovedOsProtectedVault(value: unknown): value is ApprovedOsProtectedVaultPort {
+  return isApprovedOperatingSystemVault(value) && approvedOsProtectedVaults.has(value as object);
+}
 export function createApprovedVaultHostFactory(input: Omit<ApprovedVaultHostFactory, "boundary">): ApprovedVaultHostFactory {
   const factory = { boundary: "production" as const, platform: input?.platform, approval: input?.approval, createHost: input?.createHost };
   if (!isApprovedVaultHostFactory(factory)) throw new Error("VAULT_HOST_FACTORY_UNAPPROVED");
@@ -34,6 +42,19 @@ export function createProtectedVaultPort(host?: ProtectedVaultHost): ProtectedVa
   if (!host || typeof host.put !== "function" || typeof host.get !== "function") throw new Error("PROTECTED_VAULT_UNAVAILABLE");
   if (!isApprovedVaultBackend(host.backend)) throw new Error("VAULT_BACKEND_UNAPPROVED");
   return Object.freeze({ boundary: "production" as const, backend: Object.freeze({ ...host.backend }), put(tenantId, key, value) { if (!tenantId || !key || !value) throw new Error("VAULT_INPUT_INVALID"); host.put(tenantId, key, value); }, get(tenantId, key) { if (!tenantId || !key) return { status: "unsupported", code: "VAULT_UNSUPPORTED" }; try { const value = host.get(tenantId, key); return value ? { status: "available", value } : { status: "unsupported", code: "VAULT_UNSUPPORTED" }; } catch { return { status: "unsupported", code: "VAULT_UNSUPPORTED" }; } } });
+}
+/** Creates the only branded production vault accepted by production integration factories. */
+export function createApprovedOsProtectedVaultPort(input: ApprovedOsProtectedVaultInput): ApprovedOsProtectedVaultPort {
+  if ((input as { host?: unknown } | undefined)?.host && (input as { host: { boundary?: unknown } }).host.boundary === "test-only") throw new Error("VAULT_TEST_ONLY_HOST_DENIED");
+  if (!input?.host || !input.backend) throw new Error("APPROVED_OS_PROTECTED_VAULT_REQUIRED");
+  const expectedPlatform = approvedVaultPlatforms[input.platform];
+  if (!expectedPlatform || !isApprovedVaultBackend(input.backend) || input.backend.platform !== expectedPlatform || input.backend.provider !== input.platform) throw new Error("VAULT_BACKEND_UNAPPROVED");
+  if (!input.approval || input.approval.status !== "approved" || !input.approval.approvedBy || !Number.isFinite(input.approval.approvedAt) || input.approval.approvedAt <= 0) throw new Error("VAULT_APPROVAL_UNAPPROVED");
+  if (!isApprovedVaultBackend(input.host.backend) || input.host.backend.platform !== input.backend.platform || input.host.backend.provider !== input.backend.provider || input.host.backend.version !== input.backend.version || input.host.backend.approval !== input.backend.approval) throw new Error("VAULT_BACKEND_MISMATCH");
+  const protectedVault = createProtectedVaultPort(input.host);
+  const approvedVault = Object.freeze({ ...protectedVault, backend: Object.freeze({ ...input.backend }), approval: Object.freeze({ ...input.approval }) });
+  approvedOsProtectedVaults.add(approvedVault);
+  return approvedVault;
 }
 /** Test-only fixture; production adapter constructors reject this boundary. */
 export function createTestOnlyInMemoryVault(options: { supported?: boolean } = {}): TestOnlyInMemoryVaultPort {
