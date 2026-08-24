@@ -205,3 +205,17 @@ export function createSecureUpdateController(options: Readonly<{ current: Releas
 }
 
 
+
+export type ReleaseDiagnosticEvent = Readonly<{ name: "startup" | "update" | "rollback" | "vault" | "adapter" | "browser"; releaseId?: string; code?: string }>;
+export type ReleaseDiagnosticSink = Readonly<{ write(event: ReleaseDiagnosticEvent): void }>;
+/** Client diagnostics never collect content, credentials, identifiers, or telemetry unless explicitly enabled. */
+export function createOptInReleaseDiagnostics(options: Readonly<{ enabled: boolean; sink?: ReleaseDiagnosticSink }>) {
+  if (!options || typeof options.enabled !== "boolean") throw new Error("DIAGNOSTIC_OPTIONS_REQUIRED");
+  return Object.freeze({ record(event: ReleaseDiagnosticEvent) {
+    if (!options.enabled) return Object.freeze({ status: "disabled" as const });
+    if (!options.sink || typeof options.sink.write !== "function") throw new Error("DIAGNOSTIC_SINK_REQUIRED");
+    if (!event || !["startup", "update", "rollback", "vault", "adapter", "browser"].includes(event.name) || [event.releaseId, event.code].some((value) => typeof value === "string" && /(secret|token|password|private.?key)/i.test(value))) throw new Error("DIAGNOSTIC_REDACTION_REQUIRED");
+    options.sink.write(Object.freeze({ name: event.name, ...(event.releaseId ? { releaseId: event.releaseId } : {}), ...(event.code ? { code: event.code } : {}) }));
+    return Object.freeze({ status: "recorded" as const });
+  } });
+}
