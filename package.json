@@ -8,7 +8,8 @@
     "build": "npm run build:product && cargo build --manifest-path apps/product/src-tauri/Cargo.toml --locked",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "test:foundation": "vitest run tests/foundation"
+    "test:foundation": "vitest run tests/foundation",
+    "eval:quality": "vite-node evals/quality-gates.ts"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",

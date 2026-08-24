@@ -1,0 +1,1 @@
+export const commercialOpsMigration = { mode: "expand", tables: ["commercialEntitlements", "usageLedger", "billingReceipts", "paymentAuditEvents", "operationalHealth", "operationalAuditEvents", "operationalSlo", "backupRecords"], rollback: "disable commercial writes; retain immutable usage, payment, audit, and backup ledgers" } as const;
