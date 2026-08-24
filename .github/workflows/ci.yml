@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+          - name: windows
+            os: windows-latest
+          - name: macos-intel
+            os: macos-13
+          - name: macos-apple-silicon
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run convex:codegen
+      - run: git diff --exit-code -- convex/_generated
+      - run: npm run build:product
+      - run: cargo fmt --manifest-path apps/product/src-tauri/Cargo.toml -- --check
+      - run: cargo check --manifest-path apps/product/src-tauri/Cargo.toml --locked
+      - run: cargo test --manifest-path apps/product/src-tauri/Cargo.toml --locked
+      - run: npm run smoke:release -- --ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k0-${{ matrix.name }}-build
+          if-no-files-found: warn
+          path: |
+            apps/product/dist
+            apps/product/src-tauri/target/debug/k0*
+            apps/product/src-tauri/target/release/bundle
+
+  security:
+    name: Security and supply chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit --file apps/product/src-tauri/Cargo.lock
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: google/osv-scanner-action@v2.3.3
+        with:
+          scan-args: |-
+            --lockfile=package-lock.json
+            --lockfile=apps/product/src-tauri/Cargo.lock
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          artifact-name: k0-sbom

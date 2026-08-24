@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test:foundation": "vitest run tests/foundation",
     "eval:quality": "vite-node evals/quality-gates.ts",
-    "release:check": "vite-node evals/quality-gates.ts --release-check"
+    "release:check": "vite-node evals/quality-gates.ts --release-check",
+    "convex:codegen": "npx convex codegen",
+    "smoke:release": "vite-node scripts/smoke-release.ts"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
