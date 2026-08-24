@@ -1,0 +1,1 @@
+{"main-capability":{"identifier":"main-capability","description":"Main window only; no filesystem capability is granted. The sole IPC command returns the fixed $APPDATA/K0 boundary.","local":true,"windows":["main"],"permissions":["core:default"]}}

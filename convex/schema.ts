@@ -1,0 +1,16 @@
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  workspaces: defineTable({ slug: v.string(), status: v.union(v.literal("active"), v.literal("suspended")), version: v.number() }).index("by_slug", ["slug"]),
+  memberships: defineTable({ workspaceId: v.id("workspaces"), subject: v.string(), role: v.union(v.literal("viewer"), v.literal("editor"), v.literal("admin")), status: v.union(v.literal("active"), v.literal("stale"), v.literal("revoked")) }).index("by_workspace_subject", ["workspaceId", "subject"]).index("by_subject", ["subject"]),
+  commands: defineTable({ workspaceId: v.id("workspaces"), idempotencyKey: v.string(), expectedVersion: v.number(), capability: v.string(), commandId: v.string(), outcome: v.union(v.literal("accepted"), v.literal("denied"), v.literal("conflict")), code: v.optional(v.string()), effectAllowed: v.boolean(), nextVersion: v.number(), actorId: v.string() }).index("by_workspace_key", ["workspaceId", "idempotencyKey"]),
+  auditEvents: defineTable({ workspaceId: v.id("workspaces"), commandId: v.string(), decision: v.union(v.literal("accepted"), v.literal("denied"), v.literal("conflict")), immutable: v.literal(true), actorId: v.string() }).index("by_workspace", ["workspaceId"]),
+  outbox: defineTable({ workspaceId: v.id("workspaces"), idempotencyKey: v.string(), status: v.union(v.literal("pending"), v.literal("leased"), v.literal("verified"), v.literal("failed")), fence: v.number(), leaseOwner: v.optional(v.string()), leaseExpiresAt: v.number() }).index("by_workspace_key", ["workspaceId", "idempotencyKey"]),
+  inbox: defineTable({ workspaceId: v.id("workspaces"), idempotencyKey: v.string(), status: v.literal("accepted") }).index("by_workspace_key", ["workspaceId", "idempotencyKey"]),
+  runs: defineTable({ workspaceId: v.id("workspaces"), runKey: v.string(), state: v.union(v.literal("queued"), v.literal("running"), v.literal("completed"), v.literal("failed"), v.literal("manual_review")), version: v.number(), fence: v.number() }).index("by_workspace_key", ["workspaceId", "runKey"]),
+  runtimeEffects: defineTable({ runId: v.id("runs"), idempotencyKey: v.string(), sequence: v.number(), fence: v.number(), outcome: v.union(v.literal("verified"), v.literal("denied"), v.literal("failed"), v.literal("unknown")) }).index("by_run_key", ["runId", "idempotencyKey"]),
+  contextSnapshots: defineTable({ workspaceId: v.id("workspaces"), runId: v.id("runs"), snapshotKey: v.string(), budget: v.number(), usedTokens: v.number(), sourceIds: v.array(v.string()), provenance: v.array(v.string()) }).index("by_run_key", ["runId", "snapshotKey"]),
+  replayArtifacts: defineTable({ workspaceId: v.id("workspaces"), runId: v.id("runs"), replayKey: v.string(), canonicalState: v.string(), classification: v.union(v.literal("equivalent"), v.literal("different")) }).index("by_run_key", ["runId", "replayKey"]),
+  rddReceipts: defineTable({ workspaceId: v.id("workspaces"), runId: v.id("runs"), receiptKey: v.string(), reviewedBytes: v.string(), transitions: v.array(v.string()), evidence: v.array(v.string()), lineage: v.string() }).index("by_workspace_key", ["workspaceId", "receiptKey"]),
+});

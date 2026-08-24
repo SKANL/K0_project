@@ -1,0 +1,6 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "K0",
+  "identifier": "com.boop.k0",
+  "app": { "security": { "capabilities": ["main-capability"] } }
+}

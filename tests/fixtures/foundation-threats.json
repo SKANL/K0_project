@@ -1,0 +1,6 @@
+{
+  "tenantEscape": { "actorWorkspace": "workspace-a", "requestedWorkspace": "workspace-b", "expected": "TENANT_MISMATCH" },
+  "staleMembership": { "status": "stale", "expected": "STALE_MEMBERSHIP" },
+  "duplicateCommand": { "idempotencyKey": "command-1", "expected": "accepted" },
+  "ipc": { "window": "main", "path": "$APPDATA", "expected": "IPC_SCOPE_DENIED" }
+}

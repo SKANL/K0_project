@@ -1,0 +1,8 @@
+.atl/
+node_modules/
+dist/
+.env.local
+.codegraph/
+.convex/
+apps/product/src-tauri/target/
+.scratch/
