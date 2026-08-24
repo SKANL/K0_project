@@ -15,6 +15,7 @@
     "smoke:release": "vite-node scripts/smoke-release.ts"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "@types/jsdom": "^21.1.7",
     "@types/node": "^22.0.0",
     "convex-test": "0.0.54",
