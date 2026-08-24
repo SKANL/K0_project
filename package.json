@@ -9,7 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "test:foundation": "vitest run tests/foundation",
-    "eval:quality": "vite-node evals/quality-gates.ts"
+    "eval:quality": "vite-node evals/quality-gates.ts",
+    "release:check": "vite-node evals/quality-gates.ts --release-check"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",

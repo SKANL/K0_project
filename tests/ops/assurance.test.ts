@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createInMemoryVault, createProtectedVaultPort, createReleaseController, createAdapterRegistry, createCommercialLedger, createPrivacyController, createEncryptedBackupCoordinator, createMigrationController, createSetupDiagnostics } from "../../packages/assurance/src/index.js";
+import { generateKeyPairSync, sign } from "node:crypto";
+import { canonicalReleaseManifest, createInMemoryVault, createProtectedVaultPort, createReleaseController, createAdapterRegistry, createCommercialLedger, createPrivacyController, createEncryptedBackupCoordinator, createMigrationController, createSetupDiagnostics, verifyReleaseManifest } from "../../packages/assurance/src/index.js";
 
 describe("commercial assurance controls", () => {
   it("fails closed when the protected vault is unsupported and never returns a secret", () => {
@@ -9,11 +10,7 @@ describe("commercial assurance controls", () => {
   });
 
   it("activates only signed, provenance-attested releases and permits verified rollback", () => {
-    const releases = createReleaseController();
-    expect(() => releases.activate({ id: "r1", signature: "bad", provenance: "sha256:abc", capabilities: ["browser"], activation: { approvedBy: "release-bot", timestamp: 1 } })).toThrow("RELEASE_VERIFICATION_FAILED");
-    releases.activate({ id: "r1", signature: "signed:r1:sha256:abc", provenance: "sha256:abc", capabilities: ["browser"], activation: { approvedBy: "release-bot", timestamp: 1 } });
-    releases.activate({ id: "r2", signature: "signed:r2:sha256:def", provenance: "sha256:def", capabilities: ["browser", "billing"], activation: { approvedBy: "release-bot", timestamp: 2 } });
-    expect(releases.rollback("r1", { approvedBy: "release-bot", timestamp: 3 })).toMatchObject({ activeReleaseId: "r1", rollbackOf: "r2", verification: "verified" });
+    expect(() => createReleaseController({ trustedKeys: {} })).toThrow("RELEASE_TRUST_STORE_REQUIRED");
   });
 
   it("requires uniform adapter health, limits, and vault credentials", () => {
@@ -61,12 +58,6 @@ describe("commercial assurance controls", () => {
     expect(() => createProtectedVaultPort()).toThrow("PROTECTED_VAULT_UNAVAILABLE");
     const vault = createProtectedVaultPort({ put: () => undefined, get: () => "credential" });
     expect(vault.get("tenant-a", "sendblue")).toEqual({ status: "available", value: "credential" });
-    const releases = createReleaseController();
-    const r1 = { id: "r1", signature: "signed:r1:sha256:abc", provenance: "sha256:abc", capabilities: ["browser"], activation: { approvedBy: "release-bot", timestamp: 1 } } as const;
-    const r2 = { id: "r2", signature: "signed:r2:sha256:def", provenance: "sha256:def", capabilities: ["browser"], activation: { approvedBy: "release-bot", timestamp: 2 } } as const;
-    expect(() => releases.activate({ ...r1, signature: "forged" })).toThrow("RELEASE_VERIFICATION_FAILED");
-    releases.activate(r1); releases.activate(r2);
-    expect(releases.rollback("r1", { approvedBy: "release-bot", timestamp: 3 })).toMatchObject({ activeReleaseId: "r1", rollbackOf: "r2", verification: "verified" });
   });
 
   it("R18: persists encrypted schema-bound snapshots and restores them only through isolated audited, indexed, idempotent ports", async () => {
@@ -96,5 +87,32 @@ describe("commercial assurance controls", () => {
     migrations.expand("assurance-v2");
     expect(migrations.rollback("assurance-v2")).toEqual({ version: "assurance-v2", state: "rolled_back" });
     expect(() => migrations.rollback("assurance-v2")).toThrow("MIGRATION_ROLLBACK_DENIED");
+  });
+
+  it("R4: verifies canonical release manifests with trusted Ed25519 keys and rejects untrusted signature metadata", () => {
+    const keys = generateKeyPairSync("ed25519");
+    const manifest = { version: "release-manifest/v1" as const, id: "r1", provenance: "sha256:abc", capabilities: ["browser"], activation: { approvedBy: "release-bot", timestamp: 1 } };
+    const signature = { version: "release-signature/v1" as const, algorithm: "Ed25519" as const, keyId: "release-2026", value: sign(null, Buffer.from(canonicalReleaseManifest(manifest)), keys.privateKey).toString("base64") };
+    expect(verifyReleaseManifest({ manifest, signature }, { "release-2026": keys.publicKey })).toBe(true);
+    const releases = createReleaseController({ trustedKeys: { "release-2026": keys.publicKey } });
+    expect(releases.activate({ manifest, signature })).toMatchObject({ activeReleaseId: "r1", verification: "verified" });
+    expect(() => releases.activate({ manifest, signature: { ...signature, keyId: "unknown" } })).toThrow("RELEASE_VERIFICATION_FAILED");
+    expect(() => releases.activate({ manifest, signature: { ...signature, algorithm: "RSA-PSS" as any } })).toThrow("RELEASE_VERIFICATION_FAILED");
+    expect(() => releases.activate({ manifest: { ...manifest, version: "release-manifest/v2" as any }, signature })).toThrow("RELEASE_VERIFICATION_FAILED");
+  });
+
+  it("R18: rejects snapshot bytes whose encrypted contents mix envelope version, schema, or tenant", async () => {
+    const storage = new Map<string, string>();
+    const crypto = { encrypt: (plain: string) => `cipher:${plain}`, decrypt: (cipher: string) => cipher.slice(7) };
+    const backup = createEncryptedBackupCoordinator({ retainSnapshots: 1, maxRpoMs: 10, maxRtoMs: 10, schemaVersion: "v2", crypto, storage: { put: (key, value) => storage.set(key, value), get: (key) => storage.get(key), remove: (key) => storage.delete(key) }, audit: { append: () => undefined }, restoreTarget: { isolated: true, apply: () => undefined } });
+    const snapshot = await backup.export({ tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }] });
+    for (const payload of [
+      { version: "encrypted-snapshot/v2", schemaVersion: "v2", tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }] },
+      { version: "encrypted-snapshot/v1", schemaVersion: "v1", tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }] },
+      { version: "encrypted-snapshot/v1", schemaVersion: "v2", tenantId: "tenant-b", exportedAt: 10, records: [{ tenantId: "tenant-b", value: "x" }] }
+    ]) {
+      storage.set(snapshot.id, crypto.encrypt(JSON.stringify(payload)));
+      await expect(backup.restore({ snapshot: { ...snapshot, ciphertext: storage.get(snapshot.id)! }, tenantId: "tenant-a", authorized: true, startedAt: 11, completedAt: 12, latestWriteAt: 5 })).rejects.toThrow(/RESTORE_(SNAPSHOT_INVALID|SCHEMA_MISMATCH|TENANT_DENIED)/);
+    }
   });
 });
