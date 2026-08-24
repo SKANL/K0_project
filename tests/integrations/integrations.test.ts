@@ -9,6 +9,7 @@ import {
   createComposioAdapter,
   createIntegrationController,
   createProductionIntegrationAdapters,
+  createProductionIntegrationAdapterRegistry,
   proveProductionIntegrationAdapterRegistry,
   createProviderSecretPort,
   createSendblueAdapter,
@@ -17,7 +18,7 @@ import {
   type IntegrationProviderPort,
   type IntegrationCapabilityContract,
 } from "../../packages/adapters/src/integrations/index.js";
-import { createProtectedVaultPort, createTestOnlyInMemoryVault } from "../../packages/assurance/src/index.js";
+import { createApprovedVaultHostFactory, createProtectedVaultPort, createTestOnlyInMemoryVault, VaultHostPlatform } from "../../packages/assurance/src/index.js";
 
 const modules = import.meta.glob("../../convex/**/*.ts");
 const NOW = 1_741_506_400_000;
@@ -28,6 +29,19 @@ function testProductionVault() {
     backend: { platform: "windows", provider: "windows-credential-manager", version: "1.0.0", approval: "approved" },
     put: (tenantId, key, value) => values.set(`${tenantId}\u0000${key}`, value),
     get: (tenantId, key) => values.get(`${tenantId}\u0000${key}`)
+  });
+}
+
+function testProductionVaultHostFactory() {
+  const values = new Map<string, string>();
+  return createApprovedVaultHostFactory({
+    platform: VaultHostPlatform.WindowsCredentialManager,
+    approval: { status: "approved", approvedBy: "security", approvedAt: 1 },
+    createHost: () => ({
+      backend: { platform: "windows", provider: "windows-credential-manager", version: "1.0.0", approval: "approved" },
+      put: (tenantId, key, value) => values.set(`${tenantId}\u0000${key}`, value),
+      get: (tenantId, key) => values.get(`${tenantId}\u0000${key}`)
+    })
   });
 }
 
@@ -176,24 +190,35 @@ describe("integration remediation", () => {
     expect(() => proveProductionIntegrationAdapterRegistry(vault, [{ ...composio, capability: { ...composio.capability, credentialReference: "vault://wrong" } } as any, sendblue, apple])).toThrow("INTEGRATION_ADAPTER_CREDENTIAL_REFERENCE_INVALID");
   });
 
-  it("R3/R15: refuses production construction without a vault and resolves every provider credential by tenant reference when executing", async () => {
-    expect(() => createProductionIntegrationAdapters({} as any)).toThrow("PROTECTED_VAULT_REQUIRED");
+  it("R3/R15: requires an approved vault-host factory and resolves every provider credential by tenant reference when executing", async () => {
+    expect(() => createProductionIntegrationAdapters({} as any)).toThrow("VAULT_HOST_FACTORY_REQUIRED");
+    expect(() => createProductionIntegrationAdapterRegistry({ vaultHostFactory: { boundary: "production", platform: "windows-credential-manager", approval: { status: "pending" }, createHost: () => ({}) } } as any)).toThrow("VAULT_HOST_FACTORY_UNAPPROVED");
     const testOnlyVault = createTestOnlyInMemoryVault({ supported: true });
-    expect(() => createProductionIntegrationAdapters({ vault: testOnlyVault } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
+    expect(() => createProductionIntegrationAdapters({ vaultHostFactory: testOnlyVault } as any)).toThrow("VAULT_HOST_FACTORY_UNAPPROVED");
     expect(() => createComposioAdapter({ vault: testOnlyVault, toolkitVersion: "2026.9.1" } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
     expect(() => createSendblueAdapter({ vault: testOnlyVault } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
     expect(() => createAppleAdapter({ vault: testOnlyVault } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
-    expect(() => createProductionIntegrationAdapters({ vault: { boundary: "production", put: () => undefined, get: () => ({ status: "unsupported", code: "VAULT_UNSUPPORTED" }) } } as any)).toThrow("VAULT_BACKEND_UNAPPROVED");
-    const vault = testProductionVault();
+    const vaultHostFactory = testProductionVaultHostFactory();
+    const vault = createProtectedVaultPort(vaultHostFactory.createHost());
     for (const providerName of ["composio", "sendblue", "apple"] as const) vault.put("tenant-a", providerName, `${providerName}-credential`);
     const credentials: string[] = [];
-    const adapters = createProductionIntegrationAdapters({
-      vault,
+    const registry = createProductionIntegrationAdapterRegistry({
+      vaultHostFactory,
       composio: { toolkitVersion: "2026.9.1", connect: async () => "composio-account", execute: async (input: any) => { credentials.push(input.credential); return { state: "sent", costMicros: 1, latencyMs: 1 }; }, reconcile: async () => ({ state: "sent" }) },
       sendblue: { connect: async () => "sendblue-account", lookupDestinationCapability: async () => ({ capable: true }), send: async (input: any) => { credentials.push(input.credential); return { state: "sent", costMicros: 1, latencyMs: 1 }; }, status: async () => ({ state: "sent" }) },
       apple: { execute: async (input: any) => { credentials.push(input.credential); return { state: "sent", costMicros: 0, latencyMs: 0 }; } }
     });
-    const controller = createIntegrationController({ providers: adapters });
+    expect(Object.keys(registry.adapters).sort()).toEqual(["apple", "composio", "sendblue"]);
+    for (const [providerName, adapter] of Object.entries(registry.adapters)) {
+      expect(adapter).toMatchObject({ provider: providerName });
+      expect(adapter.toolkitVersion).toEqual(expect.any(String));
+      expect(adapter.capability).toMatchObject({ version: "integration-capability/v1", credentialReference: `vault://${providerName}` });
+      expect(typeof adapter.connect).toBe("function");
+      expect(typeof adapter.execute).toBe("function");
+      expect(typeof adapter.reconcile).toBe("function");
+      expect(typeof adapter.capability.health).toBe("function");
+    }
+    const controller = createIntegrationController({ providers: registry.providers });
     for (const providerName of ["composio", "sendblue", "apple"] as const) {
       const operation = providerName === "composio" ? "tool.execute" : providerName === "sendblue" ? "message.send" : "notes";
       const connection = await controller.connect({ provider: providerName, tenantId: "tenant-a", userId: "alice", scopes: [operation], authorizationCode: "authorization-code" });

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateKeyPairSync, sign } from "node:crypto";
-import { canonicalReleaseManifest, createTestOnlyInMemoryVault, createProtectedVaultPort, createReleaseController, createAdapterRegistry, createCommercialLedger, createPrivacyController, createEncryptedBackupCoordinator, createMigrationController, createSetupDiagnostics, verifyReleaseManifest } from "../../packages/assurance/src/index.js";
+import { canonicalReleaseManifest, createApprovedVaultHostFactory, createTestOnlyInMemoryVault, createProtectedVaultPort, createReleaseController, createAdapterRegistry, createCommercialLedger, createPrivacyController, createEncryptedBackupCoordinator, createMigrationController, createSetupDiagnostics, verifyReleaseManifest, type SignatureVerifierPort, VaultHostPlatform } from "../../packages/assurance/src/index.js";
 
 describe("commercial assurance controls", () => {
   it("fails closed when the protected vault is unsupported and never returns a secret", () => {
@@ -95,24 +94,36 @@ describe("commercial assurance controls", () => {
     expect(() => migrations.rollback("assurance-v2")).toThrow("MIGRATION_ROLLBACK_DENIED");
   });
 
-  it("R4: requires runtime capability equality after signature verification", () => {
-    const keys = generateKeyPairSync("ed25519");
-    const manifest = { version: "release-manifest/v1" as const, id: "runtime-r1", provenance: "sha256:abc", capabilities: ["browser", "vault"], activation: { approvedBy: "release-bot", timestamp: 1 } };
-    const signature = { version: "release-signature/v1" as const, algorithm: "Ed25519" as const, keyId: "release-2026", value: sign(null, Buffer.from(canonicalReleaseManifest(manifest)), keys.privateKey).toString("base64") };
-    expect(() => createReleaseController({ trustedKeys: { "release-2026": keys.publicKey } }).activate({ manifest, signature })).toThrow("RELEASE_RUNTIME_CAPABILITIES_REQUIRED");
-    expect(() => createReleaseController({ trustedKeys: { "release-2026": keys.publicKey }, runtimeCapabilities: ["browser"] }).activate({ manifest, signature })).toThrow("RELEASE_CAPABILITY_MISMATCH");
+  it("R3: requires an approved cross-platform vault host factory with auditable approval metadata", () => {
+    const hosts = new Map<string, string>();
+    expect(() => createApprovedVaultHostFactory({ platform: VaultHostPlatform.WindowsCredentialManager, approval: { status: "pending", approvedBy: "security", approvedAt: 1 }, createHost: () => ({ backend: { platform: "windows", provider: "windows-credential-manager", version: "1.0.0", approval: "approved" }, put: () => undefined, get: () => undefined }) } as any)).toThrow("VAULT_HOST_FACTORY_UNAPPROVED");
+    for (const [platform, backend] of [[VaultHostPlatform.WindowsCredentialManager, { platform: "windows", provider: "windows-credential-manager" }], [VaultHostPlatform.MacosKeychain, { platform: "macos", provider: "macos-keychain" }], [VaultHostPlatform.LinuxSecretService, { platform: "linux", provider: "linux-secret-service" }]] as const) {
+      const factory = createApprovedVaultHostFactory({ platform, approval: { status: "approved", approvedBy: "security", approvedAt: 1 }, createHost: () => ({ backend: { ...backend, version: "1.0.0", approval: "approved" }, put: (tenantId, key, value) => hosts.set(`${tenantId}\u0000${key}`, value), get: (tenantId, key) => hosts.get(`${tenantId}\u0000${key}`) }) });
+      expect(factory.boundary).toBe("production");
+      expect(factory.platform).toBe(platform);
+      expect(createProtectedVaultPort(factory.createHost()).backend.provider).toBe(platform);
+    }
   });
 
-  it("R4: verifies canonical release manifests with trusted Ed25519 keys and rejects untrusted signature metadata", () => {
-    const keys = generateKeyPairSync("ed25519");
+  it("R4: uses an injected signature verifier and retains runtime capability equality", async () => {
+    const manifest = { version: "release-manifest/v1" as const, id: "runtime-r1", provenance: "sha256:abc", capabilities: ["browser", "vault"], activation: { approvedBy: "release-bot", timestamp: 1 } };
+    const signature = { version: "release-signature/v1" as const, algorithm: "Ed25519" as const, keyId: "release-2026", value: "AQ==" };
+    const verifier: SignatureVerifierPort = { verify: async (input) => input.manifest === canonicalReleaseManifest(manifest) && input.signature === "AQ==" && input.publicKey.kty === "OKP" };
+    await expect(createReleaseController({ trustedKeys: { "release-2026": { kty: "OKP", crv: "Ed25519", x: "public-key" } }, signatureVerifier: verifier }).activate({ manifest, signature })).rejects.toThrow("RELEASE_RUNTIME_CAPABILITIES_REQUIRED");
+    await expect(createReleaseController({ trustedKeys: { "release-2026": { kty: "OKP", crv: "Ed25519", x: "public-key" } }, signatureVerifier: verifier, runtimeCapabilities: ["browser"] }).activate({ manifest, signature })).rejects.toThrow("RELEASE_CAPABILITY_MISMATCH");
+  });
+
+  it("R4: verifies canonical release manifests through the injected port and rejects invalid metadata", async () => {
     const manifest = { version: "release-manifest/v1" as const, id: "r1", provenance: "sha256:abc", capabilities: ["browser"], activation: { approvedBy: "release-bot", timestamp: 1 } };
-    const signature = { version: "release-signature/v1" as const, algorithm: "Ed25519" as const, keyId: "release-2026", value: sign(null, Buffer.from(canonicalReleaseManifest(manifest)), keys.privateKey).toString("base64") };
-    expect(verifyReleaseManifest({ manifest, signature }, { "release-2026": keys.publicKey })).toBe(true);
-    const releases = createReleaseController({ trustedKeys: { "release-2026": keys.publicKey }, runtimeCapabilities: ["browser"] });
-    expect(releases.activate({ manifest, signature })).toMatchObject({ activeReleaseId: "r1", verification: "verified" });
-    expect(() => releases.activate({ manifest, signature: { ...signature, keyId: "unknown" } })).toThrow("RELEASE_VERIFICATION_FAILED");
-    expect(() => releases.activate({ manifest, signature: { ...signature, algorithm: "RSA-PSS" as any } })).toThrow("RELEASE_VERIFICATION_FAILED");
-    expect(() => releases.activate({ manifest: { ...manifest, version: "release-manifest/v2" as any }, signature })).toThrow("RELEASE_VERIFICATION_FAILED");
+    const signature = { version: "release-signature/v1" as const, algorithm: "Ed25519" as const, keyId: "release-2026", value: "AQ==" };
+    const trustedKeys = { "release-2026": { kty: "OKP", crv: "Ed25519", x: "public-key" } } as const;
+    const verifier: SignatureVerifierPort = { verify: async (input) => input.manifest === canonicalReleaseManifest(manifest) && input.signature === "AQ==" && input.publicKey.kty === "OKP" };
+    await expect(verifyReleaseManifest({ manifest, signature }, trustedKeys, verifier)).resolves.toBe(true);
+    const releases = createReleaseController({ trustedKeys, signatureVerifier: verifier, runtimeCapabilities: ["browser"] });
+    await expect(releases.activate({ manifest, signature })).resolves.toMatchObject({ activeReleaseId: "r1", verification: "verified" });
+    await expect(releases.activate({ manifest, signature: { ...signature, keyId: "unknown" } })).rejects.toThrow("RELEASE_VERIFICATION_FAILED");
+    await expect(releases.activate({ manifest, signature: { ...signature, algorithm: "RSA-PSS" as any } })).rejects.toThrow("RELEASE_VERIFICATION_FAILED");
+    await expect(releases.activate({ manifest: { ...manifest, version: "release-manifest/v2" as any }, signature })).rejects.toThrow("RELEASE_VERIFICATION_FAILED");
   });
 
   it("R18: rejects snapshot bytes whose encrypted contents mix envelope version, schema, or tenant", async () => {

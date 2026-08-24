@@ -1,5 +1,5 @@
 /** Provider-neutral integration ports; secrets never become policy or prompt metadata. */
-import { createAdapterRegistry, isApprovedOperatingSystemVault, type ProtectedVaultPort } from "../../../assurance/src/index.js";
+import { createAdapterRegistry, createProtectedVaultPort, isApprovedOperatingSystemVault, isApprovedVaultHostFactory, type ApprovedVaultHostFactory, type ProtectedVaultPort } from "../../../assurance/src/index.js";
 export type IntegrationProvider = "composio" | "sendblue" | "apple";
 export type ConnectionState = "pending" | "active" | "failed" | "revoked";
 export type DeliveryState = "queued" | "sent" | "delivered" | "error" | "unknown";
@@ -89,16 +89,36 @@ export function createAppleAdapter(host: AppleHost): IntegrationProviderPort {
   return Object.freeze(adapter);
 }
 export type ProductionIntegrationAdapterRegistryProof = Readonly<{ providers: readonly IntegrationProvider[]; registry: ReturnType<typeof createAdapterRegistry> }>;
+export type ProductionIntegrationAdapterRegistry = Readonly<{ providers: readonly IntegrationProviderPort[]; adapters: Readonly<Record<IntegrationProvider, IntegrationProviderPort>>; registry: ReturnType<typeof createAdapterRegistry> }>;
+export type ProductionIntegrationFactoryInput = Readonly<{ vaultHostFactory: ApprovedVaultHostFactory; composio: Omit<ComposioHost, "vault">; sendblue: Omit<SendblueHost, "vault">; apple: Omit<AppleHost, "vault"> }>;
+function isProductionAdapter(adapter: IntegrationProviderPort): boolean { return !!adapter && typeof adapter.provider === "string" && typeof adapter.toolkitVersion === "string" && adapter.toolkitVersion.length > 0 && validCapabilityContract(adapter.capability) && typeof adapter.connect === "function" && typeof adapter.execute === "function" && typeof adapter.reconcile === "function"; }
 export function proveProductionIntegrationAdapterRegistry(vault: ProtectedVaultPort, adapters: readonly IntegrationProviderPort[]): ProductionIntegrationAdapterRegistryProof {
   requireVault(vault);
   const providers = ["composio", "sendblue", "apple"] as const;
-  if (adapters.length !== providers.length || new Set(adapters.map((adapter) => adapter.provider)).size !== providers.length || !providers.every((provider, index) => adapters[index]?.provider === provider)) throw new Error("INTEGRATION_ADAPTER_REGISTRY_INVALID");
+  if (adapters.length !== providers.length || new Set(adapters.map((adapter) => adapter.provider)).size !== providers.length || !providers.every((provider, index) => adapters[index]?.provider === provider) || !adapters.every(isProductionAdapter)) throw new Error("INTEGRATION_ADAPTER_REGISTRY_INVALID");
   const registry = createAdapterRegistry(vault);
   for (const adapter of adapters) {
     const capability = adapter.capability;
-    if (!validCapabilityContract(capability) || capability.credentialReference !== `vault://${adapter.provider}`) throw new Error("INTEGRATION_ADAPTER_CREDENTIAL_REFERENCE_INVALID");
+    if (capability.credentialReference !== `vault://${adapter.provider}`) throw new Error("INTEGRATION_ADAPTER_CREDENTIAL_REFERENCE_INVALID");
     registry.register({ name: adapter.provider, version: adapter.toolkitVersion, capabilities: capability.capabilities, limits: capability.limits, credentialReference: capability.credentialReference, health: capability.health });
   }
   return Object.freeze({ providers: Object.freeze([...providers]), registry });
 }
-export function createProductionIntegrationAdapters(input: Readonly<{ vault: ProtectedVaultPort; composio: Omit<ComposioHost, "vault">; sendblue: Omit<SendblueHost, "vault">; apple: Omit<AppleHost, "vault"> }>): readonly IntegrationProviderPort[] { if (!input?.vault) throw new Error("PROTECTED_VAULT_REQUIRED"); const adapters = Object.freeze([createComposioAdapter({ ...input.composio, vault: input.vault }), createSendblueAdapter({ ...input.sendblue, vault: input.vault }), createAppleAdapter({ ...input.apple, vault: input.vault })]); proveProductionIntegrationAdapterRegistry(input.vault, adapters); return adapters; }
+function createProductionVault(factory: unknown): ProtectedVaultPort {
+  if (!factory) throw new Error("VAULT_HOST_FACTORY_REQUIRED");
+  if (!isApprovedVaultHostFactory(factory)) throw new Error("VAULT_HOST_FACTORY_UNAPPROVED");
+  const vault = createProtectedVaultPort(factory.createHost());
+  if (vault.backend.provider !== factory.platform) throw new Error("VAULT_HOST_PLATFORM_MISMATCH");
+  return vault;
+}
+export function createProductionIntegrationAdapterRegistry(input: ProductionIntegrationFactoryInput): ProductionIntegrationAdapterRegistry {
+  if (!input?.vaultHostFactory) throw new Error("VAULT_HOST_FACTORY_REQUIRED");
+  const vault = createProductionVault(input.vaultHostFactory);
+  const composio = createComposioAdapter({ ...input.composio, vault });
+  const sendblue = createSendblueAdapter({ ...input.sendblue, vault });
+  const apple = createAppleAdapter({ ...input.apple, vault });
+  const providers = Object.freeze([composio, sendblue, apple]);
+  const proof = proveProductionIntegrationAdapterRegistry(vault, providers);
+  return Object.freeze({ providers, adapters: Object.freeze({ composio, sendblue, apple }), registry: proof.registry });
+}
+export function createProductionIntegrationAdapters(input: ProductionIntegrationFactoryInput): readonly IntegrationProviderPort[] { return createProductionIntegrationAdapterRegistry(input).providers; }
