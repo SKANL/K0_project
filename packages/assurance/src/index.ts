@@ -138,3 +138,70 @@ export function createEncryptedBackupCoordinator(policy: EncryptedBackupPolicy) 
 }
 export function createMigrationController() { const states = new Map<string, "expanded" | "rolled_back">(); return Object.freeze({ expand(version: string) { states.set(version, "expanded"); }, rollback(version: string) { if (states.get(version) !== "expanded") throw new Error("MIGRATION_ROLLBACK_DENIED"); states.set(version, "rolled_back"); return { version, state: "rolled_back" as const }; } }); }
 export function createSetupDiagnostics(input: { platform: string; available: readonly string[]; required: readonly string[] }) { return Object.freeze({ run() { const missing = input.required.filter(x => !input.available.includes(x)); return { ready: missing.length === 0, platform: input.platform, missing, featureFlags: { releaseActivation: missing.length === 0, migrations: input.available.includes("node") } }; } }); }
+
+export type UpdateChannel = "canary" | "beta" | "stable";
+export type ReleaseUpdateManifest = Readonly<{
+  version: "release-update/v1";
+  channel: UpdateChannel;
+  release: Release;
+  versionName: string;
+  publishedAt: number;
+  checksum: `sha256:${string}`;
+  provenance: `sha256:${string}`;
+  stable?: Readonly<{ oidc: true; signedProvenance: true }>;
+}>;
+export type ReleaseWorkerPort = Readonly<{ drain(): Promise<void>; resume(): Promise<void> }>;
+export type ReleaseHealthPort = Readonly<{ check(release: Release): Promise<Readonly<{ healthy: boolean; code?: string }>> }>;
+export type ReleaseTelemetryPort = Readonly<{ record(event: Readonly<{ event: "update_applied" | "update_rolled_back" | "update_rejected"; channel?: UpdateChannel; releaseId?: string; reason?: string }>): void }>;
+
+function parseReleaseVersion(value: string): readonly [number, number, number] | undefined {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.exec(value);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : undefined;
+}
+function releaseVersionIsNewer(candidate: string, active: string): boolean {
+  const left = parseReleaseVersion(candidate); const right = parseReleaseVersion(active);
+  return !!left && !!right && left.some((part, index) => part !== right[index] && part > right[index]);
+}
+function assertUpdateManifest(update: ReleaseUpdateManifest): void {
+  if (!update || update.version !== "release-update/v1" || !["canary", "beta", "stable"].includes(update.channel) || !parseReleaseVersion(update.versionName) || !Number.isFinite(update.publishedAt) || update.publishedAt <= 0 || !/^sha256:[a-f0-9]+$/i.test(update.checksum) || update.provenance !== update.release?.manifest?.provenance) throw new Error("UPDATE_TAMPERED");
+  if (update.channel === "stable" && (update.stable?.oidc !== true || update.stable.signedProvenance !== true)) throw new Error("UPDATE_STABLE_PROVENANCE_REQUIRED");
+}
+/** Fail-closed updater: verified manifests, monotonic versions, worker drain/resume and health-triggered rollback. */
+export function createSecureUpdateController(options: Readonly<{ current: Release; currentVersion: string; trustedKeys: TrustedReleaseKeys; signatureVerifier: SignatureVerifierPort; runtimeCapabilities: readonly string[]; worker: ReleaseWorkerPort; health: ReleaseHealthPort; telemetry?: ReleaseTelemetryPort }>) {
+  if (!options?.current || !parseReleaseVersion(options.currentVersion) || !options.worker || typeof options.worker.drain !== "function" || typeof options.worker.resume !== "function" || !options.health || typeof options.health.check !== "function") throw new Error("UPDATE_PORTS_REQUIRED");
+  const releases = createReleaseController({ trustedKeys: options.trustedKeys, signatureVerifier: options.signatureVerifier, runtimeCapabilities: options.runtimeCapabilities });
+  let initialized: Promise<void> | undefined;
+  let activeVersion = options.currentVersion;
+  const report = (event: Parameters<ReleaseTelemetryPort["record"]>[0]) => options.telemetry?.record(Object.freeze({ ...event }));
+  const initialize = async () => { initialized ??= releases.activate(options.current).then(() => undefined); await initialized; };
+  return Object.freeze({
+    async install(update: ReleaseUpdateManifest) {
+      try {
+        assertUpdateManifest(update);
+        if (!releaseVersionIsNewer(update.versionName, activeVersion)) throw new Error("UPDATE_DOWNGRADE_DENIED");
+        await initialize();
+        if (!await verifyReleaseManifest(update.release, options.trustedKeys, options.signatureVerifier)) throw new Error("UPDATE_SIGNATURE_INVALID");
+        await options.worker.drain();
+        try {
+          await releases.activate(update.release);
+          const health = await options.health.check(update.release);
+          if (!health.healthy) {
+            await releases.rollback(options.current.manifest.id, { approvedBy: "health-rollback", timestamp: update.publishedAt });
+            report({ event: "update_rolled_back", channel: update.channel, releaseId: update.release.manifest.id, reason: health.code ?? "UPDATE_HEALTH_FAILED" });
+            return Object.freeze({ outcome: "rolled_back" as const, activeVersion, reason: health.code ?? "UPDATE_HEALTH_FAILED" });
+          }
+          activeVersion = update.versionName;
+          report({ event: "update_applied", channel: update.channel, releaseId: update.release.manifest.id });
+          return Object.freeze({ outcome: "applied" as const, activeVersion });
+        } finally { await options.worker.resume(); }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "UPDATE_REJECTED";
+        report({ event: "update_rejected", channel: update?.channel, releaseId: update?.release?.manifest?.id, reason });
+        throw error;
+      }
+    },
+    diagnostics: () => Object.freeze({ activeVersion, activeReleaseId: releases.active()?.manifest.id, state: releases.active() ? "ready" as const : "uninitialized" as const })
+  });
+}
+
+
