@@ -19,10 +19,12 @@ async function runtime() {
 }
 
 describe("durable runtime harness", () => {
-  it("rejects malformed tool arguments before execution and returns a typed error", async () => {
+  it("rejects malformed or secret-bearing tool arguments before execution and returns a typed error", async () => {
     let calls = 0;
     const result = await executeTool({ contract: { name: "send", capability: "message.send", validateInput: (value) => typeof value === "object" && value !== null && typeof (value as { recipient?: unknown }).recipient === "string" ? { ok: true, value: value as { recipient: string } } : { ok: false, code: "TOOL_INPUT_INVALID" }, validateOutput: (value) => value === "sent" ? { ok: true, value } : { ok: false, code: "TOOL_OUTPUT_INVALID" }, policy: () => ({ allowed: true }), precondition: () => ({ ok: true }), postcondition: () => ({ ok: true }) }, args: { recipient: 42 }, invoke: async () => { calls += 1; return "sent"; } });
-    expect(result).toEqual({ ok: false, error: { code: "TOOL_INPUT_INVALID" } }); expect(calls).toBe(0);
+    expect(result).toEqual({ ok: false, error: { code: "TOOL_INPUT_INVALID" } });
+    const secretResult = await executeTool({ contract: { name: "send", capability: "message.send", validateInput: (value) => ({ ok: true, value: value as { recipient: string } }), validateOutput: (value) => ({ ok: true, value }), policy: () => ({ allowed: true }), precondition: () => ({ ok: true }), postcondition: () => ({ ok: true }) }, args: { recipient: "alice", nested: { password: "not-for-tools" } }, invoke: async () => { calls += 1; return "sent"; } });
+    expect(secretResult).toEqual({ ok: false, error: { code: "TOOL_SECRET_DENIED" } }); expect(calls).toBe(0);
   });
 
   it("rejects illegal and stale OCC transitions while duplicate transitions are idempotent", () => {
@@ -65,8 +67,9 @@ describe("durable runtime harness", () => {
     expect(await t.query(internal.state.getReceipt, { workspaceId, receiptKey: "receipt", candidateBytes: "different" })).toEqual({ ok: false, code: "RDD_BYTES_MISMATCH" });
   });
 
-  it("keeps snapshots and receipts immutable at the harness boundary", () => {
-    const snapshot = assembleContextSnapshot({ workspaceId: "w1", budget: 5, sources: [{ id: "high", workspaceId: "w1", priority: 2, tokens: 3, content: "high", provenance: "p2" }] });
+  it("keeps snapshots and receipts immutable at the harness boundary while excluding secret-bearing context", () => {
+    const snapshot = assembleContextSnapshot({ workspaceId: "w1", budget: 5, sources: [{ id: "high", workspaceId: "w1", priority: 2, tokens: 3, content: "high", provenance: "p2" }, { id: "secret", workspaceId: "w1", priority: 3, tokens: 1, content: "Authorization: Bearer token-value", provenance: "p3" }] });
+    expect(snapshot.sourceIds).toEqual(["high"]); expect(snapshot.omittedSourceIds).toEqual(["secret"]);
     const receipt = createRddReceipt({ reviewedBytes: canonicalize(runtimeFixtures.goldenTrace), transitions: ["complete"], evidence: ["test:pass"], lineage: "lineage-1" });
     expect(Object.isFrozen(snapshot)).toBe(true); expect(requireExactReceipt(receipt, canonicalize(runtimeFixtures.goldenTrace))).toEqual({ ok: true });
     expect(createLineageGraph("w1", 1).addEdge({ from: "a", to: "b", workspaceId: "w2", provenance: "p" })).toEqual({ ok: false, code: "CROSS_TENANT_EDGE" });

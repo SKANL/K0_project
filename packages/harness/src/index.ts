@@ -1,4 +1,4 @@
-export type ToolErrorCode = "TOOL_INPUT_INVALID" | "TOOL_OUTPUT_INVALID" | "POLICY_DENIED" | "PRECONDITION_FAILED" | "POSTCONDITION_FAILED" | "TOOL_UNCERTAIN";
+export type ToolErrorCode = "TOOL_SECRET_DENIED" | "TOOL_INPUT_INVALID" | "TOOL_OUTPUT_INVALID" | "POLICY_DENIED" | "PRECONDITION_FAILED" | "POSTCONDITION_FAILED" | "TOOL_UNCERTAIN";
 export type Validation<T> = { ok: true; value: T } | { ok: false; code: ToolErrorCode };
 export type Check = { ok: true } | { ok: false; code: ToolErrorCode };
 
@@ -12,7 +12,15 @@ export type ToolContract<Input, Output> = {
   postcondition(input: Input, output: Output): Check;
 };
 
+const runtimeSecret = /(?:api[-_]?key|token|authorization|password|secret)\s*[:=]|(?:api[-_]?key|token|authorization|password|secret)/i;
+function containsRuntimeSecret(value: unknown): boolean {
+  if (typeof value === "string") return runtimeSecret.test(value);
+  if (!value || typeof value !== "object") return false;
+  return Object.entries(value as Record<string, unknown>).some(([key, nested]) => runtimeSecret.test(key) || containsRuntimeSecret(nested));
+}
+
 export async function executeTool<Input, Output>(input: { contract: ToolContract<Input, Output>; args: unknown; invoke(args: Input): Promise<unknown> }): Promise<{ ok: true; value: Output } | { ok: false; error: { code: ToolErrorCode } }> {
+  if (containsRuntimeSecret(input.args)) return { ok: false, error: { code: "TOOL_SECRET_DENIED" } };
   const validated = input.contract.validateInput(input.args);
   if (!validated.ok) return { ok: false, error: { code: validated.code } };
   if (!input.contract.policy(validated.value).allowed) return { ok: false, error: { code: "POLICY_DENIED" } };
@@ -45,9 +53,10 @@ export type ContextSource = Readonly<{ id: string; workspaceId: string; priority
 export type ContextSnapshot = Readonly<{ workspaceId: string; budget: number; usedTokens: number; sourceIds: readonly string[]; omittedSourceIds: readonly string[]; provenance: readonly string[] }>;
 export function assembleContextSnapshot(input: { workspaceId: string; budget: number; sources: readonly ContextSource[] }): ContextSnapshot {
   const selected: ContextSource[] = []; let usedTokens = 0;
-  const ordered = [...input.sources].filter((source) => source.workspaceId === input.workspaceId && source.provenance.length > 0).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
+  const candidates = [...input.sources].filter((source) => source.workspaceId === input.workspaceId && source.provenance.length > 0);
+  const ordered = candidates.filter((source) => !containsRuntimeSecret(source.content)).sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
   for (const source of ordered) if (usedTokens + source.tokens <= input.budget) { selected.push(source); usedTokens += source.tokens; }
-  const sourceIds = selected.map(({ id }) => id); const omittedSourceIds = ordered.filter(({ id }) => !sourceIds.includes(id)).map(({ id }) => id);
+  const sourceIds = selected.map(({ id }) => id); const omittedSourceIds = candidates.filter(({ id }) => !sourceIds.includes(id)).map(({ id }) => id);
   return Object.freeze({ workspaceId: input.workspaceId, budget: input.budget, usedTokens, sourceIds: Object.freeze(sourceIds), omittedSourceIds: Object.freeze(omittedSourceIds), provenance: Object.freeze(selected.map(({ provenance }) => provenance)) });
 }
 
