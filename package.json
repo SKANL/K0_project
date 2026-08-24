@@ -19,7 +19,7 @@
     "@types/jsdom": "^21.1.7",
     "@types/node": "^22.0.0",
     "convex-test": "0.0.54",
-    "esbuild": "^0.27.7",
+    "esbuild": "^0.28.1",
     "jsdom": "^26.1.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
