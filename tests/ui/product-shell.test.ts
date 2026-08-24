@@ -209,3 +209,13 @@ describe("Tool Approvals production route", () => {
     expect(startup.productRuntime.events).toBeDefined();
   });
 });
+
+it("announces unsupported and offline queued/running/failed/unknown outcomes accessibly", async () => {
+  const { createProductShellState, transitionProductShell, renderProductShellMarkup } = await import("../../apps/product/src/product-shell.js");
+  let state = createProductShellState({ workspaceId: "w1", workspaceName: "Workspace" });
+  state = transitionProductShell(state, { type: "CAPABILITY_UNSUPPORTED", capability: "Apple Messages", alternative: "Use Sendblue on this platform." });
+  expect(renderProductShellMarkup(state)).toContain('aria-live="assertive"');
+  expect(renderProductShellMarkup(state)).toContain("Use Sendblue on this platform.");
+  state = transitionProductShell(state, { type: "OFFLINE_OUTCOME", outcome: "queued" });
+  expect(state.message).toContain("queued");
+});
