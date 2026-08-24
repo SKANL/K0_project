@@ -16,8 +16,8 @@ describe("commercial assurance controls", () => {
   it("requires uniform adapter health, limits, and vault credentials", () => {
     const vault = createTestOnlyInMemoryVault({ supported: true }); vault.put("tenant-a", "sendblue", "secret");
     const registry = createAdapterRegistry(vault);
-    expect(() => registry.register({ name: "bad", version: "1", capabilities: [], limits: {}, health: async () => ({ healthy: true }) })).toThrow("ADAPTER_CONTRACT_INVALID");
-    registry.register({ name: "sendblue", version: "1", capabilities: ["sms"], limits: { maxRequests: 1 }, health: async () => ({ healthy: true }) });
+    expect(() => registry.register({ name: "bad", version: "1", capabilities: [], limits: {}, credentialReference: "vault://bad", health: async () => ({ healthy: true }) })).toThrow("ADAPTER_CONTRACT_INVALID");
+    registry.register({ name: "sendblue", version: "1", capabilities: ["sms"], limits: { maxRequests: 1 }, credentialReference: "vault://sendblue", health: async () => ({ healthy: true }) });
     expect(registry.credential("tenant-a", "sendblue")).toEqual({ status: "available", value: "secret" });
   });
 
@@ -54,10 +54,13 @@ describe("commercial assurance controls", () => {
     expect(diagnostics.run()).toMatchObject({ ready: false, missing: ["vault"], featureFlags: { releaseActivation: false } });
   });
 
-  it("requires a real protected-vault host and verifies signed provenance before activation or rollback", () => {
+  it("requires an approved OS vault backend and verifies signed provenance before activation or rollback", () => {
     expect(() => createProtectedVaultPort()).toThrow("PROTECTED_VAULT_UNAVAILABLE");
-    const vault = createProtectedVaultPort({ put: () => undefined, get: () => "credential" });
-    expect(vault.get("tenant-a", "sendblue")).toEqual({ status: "available", value: "credential" });
+    expect(() => createProtectedVaultPort({ backend: { platform: "windows", provider: "in-memory", version: "1.0.0", approval: "approved" }, put: () => undefined, get: () => "credential" } as any)).toThrow("VAULT_BACKEND_UNAPPROVED");
+    for (const backend of [{ platform: "windows", provider: "windows-credential-manager" }, { platform: "macos", provider: "macos-keychain" }, { platform: "linux", provider: "linux-secret-service" }] as const) {
+      const vault = createProtectedVaultPort({ backend: { ...backend, version: "1.0.0", approval: "approved" }, put: () => undefined, get: () => "credential" });
+      expect(vault.get("tenant-a", "sendblue")).toEqual({ status: "available", value: "credential" });
+    }
   });
 
   it("R18: persists encrypted schema-bound snapshots and restores them only through isolated audited, indexed, idempotent ports", async () => {

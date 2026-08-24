@@ -1,5 +1,5 @@
 /** Provider-neutral integration ports; secrets never become policy or prompt metadata. */
-import type { ProtectedVaultPort } from "../../../assurance/src/index.js";
+import { createAdapterRegistry, isApprovedOperatingSystemVault, type ProtectedVaultPort } from "../../../assurance/src/index.js";
 export type IntegrationProvider = "composio" | "sendblue" | "apple";
 export type ConnectionState = "pending" | "active" | "failed" | "revoked";
 export type DeliveryState = "queued" | "sent" | "delivered" | "error" | "unknown";
@@ -66,7 +66,7 @@ export function appleCapabilityMatrix(input: { platform: "ios" | "macos" | "othe
 export const integrationToolMetadata = Object.freeze({ version: "integration-policy/v2", noTokensInPrompts: true, audit: ["idempotencyKey", "costMicros", "latencyMs"] as const });
 export function createIntegrationCapabilityContract(provider: IntegrationProvider, capabilities: readonly string[], limits: Readonly<Record<string, number>>): IntegrationCapabilityContract { return Object.freeze({ version: "integration-capability/v1", capabilities: Object.freeze([...capabilities]), limits: Object.freeze({ ...limits }), credentialReference: `vault://${provider}`, health: async () => ({ healthy: true }) }); }
 type VaultBound = Readonly<{ vault: ProtectedVaultPort }>;
-function requireVault(vault: ProtectedVaultPort | undefined): ProtectedVaultPort { if (!vault || typeof vault.get !== "function") throw new Error("PROTECTED_VAULT_REQUIRED"); if (vault.boundary !== "production") throw new Error("PROTECTED_VAULT_PRODUCTION_REQUIRED"); return vault; }
+function requireVault(vault: ProtectedVaultPort | undefined): ProtectedVaultPort { if (!vault || typeof vault.get !== "function") throw new Error("PROTECTED_VAULT_REQUIRED"); if (vault.boundary !== "production") throw new Error("PROTECTED_VAULT_PRODUCTION_REQUIRED"); if (!isApprovedOperatingSystemVault(vault)) throw new Error("VAULT_BACKEND_UNAPPROVED"); return vault; }
 function requiredCredential(vault: ProtectedVaultPort | undefined, tenantId: string, provider: IntegrationProvider): string | undefined { const result = requireVault(vault).get(tenantId, provider); return result.status === "available" ? result.value : undefined; }
 export type SendblueHost = VaultBound & { connect: (input: { tenantId: string; userId: string; scopes: readonly string[]; authorizationCode: string }) => Promise<string>; lookupDestinationCapability: (destination: string) => Promise<{ capable: boolean }>; send: (input: { destination: string; idempotencyKey: string; credential: string }) => Promise<{ state: "sent" | "delivered" | "error"; costMicros: number; latencyMs: number; providerDeliveryId?: string }>; status: (input: { idempotencyKey: string; providerDeliveryId?: string }) => Promise<{ state: "sent" | "delivered" | "error" | "unknown"; providerDeliveryId?: string }> };
 export function createSendblueAdapter(host: SendblueHost): IntegrationProviderPort { requireVault(host?.vault); return Object.freeze({ provider: "sendblue", toolkitVersion: "api", capability: createIntegrationCapabilityContract("sendblue", ["message.send", "message.reconcile"], { maxDestinationLength: 16, maxRequestsPerMinute: 60 }), connect: async (input) => ({ externalAccountId: await host.connect(input) }), execute: async (input) => { const credential = requiredCredential(host.vault, input.connection.tenantId, "sendblue"); const destination = input.metadata.destination ?? ""; if (!credential || !e164.test(destination) || !(await host.lookupDestinationCapability(destination)).capable) return { state: "error", costMicros: 0, latencyMs: 0 }; return host.send({ destination, idempotencyKey: input.idempotencyKey, credential }); }, reconcile: async (input) => host.status(input) }); }
@@ -88,4 +88,17 @@ export function createAppleAdapter(host: AppleHost): IntegrationProviderPort {
   };
   return Object.freeze(adapter);
 }
-export function createProductionIntegrationAdapters(input: Readonly<{ vault: ProtectedVaultPort; composio: Omit<ComposioHost, "vault">; sendblue: Omit<SendblueHost, "vault">; apple: Omit<AppleHost, "vault"> }>): readonly IntegrationProviderPort[] { if (!input?.vault) throw new Error("PROTECTED_VAULT_REQUIRED"); return Object.freeze([createComposioAdapter({ ...input.composio, vault: input.vault }), createSendblueAdapter({ ...input.sendblue, vault: input.vault }), createAppleAdapter({ ...input.apple, vault: input.vault })]); }
+export type ProductionIntegrationAdapterRegistryProof = Readonly<{ providers: readonly IntegrationProvider[]; registry: ReturnType<typeof createAdapterRegistry> }>;
+export function proveProductionIntegrationAdapterRegistry(vault: ProtectedVaultPort, adapters: readonly IntegrationProviderPort[]): ProductionIntegrationAdapterRegistryProof {
+  requireVault(vault);
+  const providers = ["composio", "sendblue", "apple"] as const;
+  if (adapters.length !== providers.length || new Set(adapters.map((adapter) => adapter.provider)).size !== providers.length || !providers.every((provider, index) => adapters[index]?.provider === provider)) throw new Error("INTEGRATION_ADAPTER_REGISTRY_INVALID");
+  const registry = createAdapterRegistry(vault);
+  for (const adapter of adapters) {
+    const capability = adapter.capability;
+    if (!validCapabilityContract(capability) || capability.credentialReference !== `vault://${adapter.provider}`) throw new Error("INTEGRATION_ADAPTER_CREDENTIAL_REFERENCE_INVALID");
+    registry.register({ name: adapter.provider, version: adapter.toolkitVersion, capabilities: capability.capabilities, limits: capability.limits, credentialReference: capability.credentialReference, health: capability.health });
+  }
+  return Object.freeze({ providers: Object.freeze([...providers]), registry });
+}
+export function createProductionIntegrationAdapters(input: Readonly<{ vault: ProtectedVaultPort; composio: Omit<ComposioHost, "vault">; sendblue: Omit<SendblueHost, "vault">; apple: Omit<AppleHost, "vault"> }>): readonly IntegrationProviderPort[] { if (!input?.vault) throw new Error("PROTECTED_VAULT_REQUIRED"); const adapters = Object.freeze([createComposioAdapter({ ...input.composio, vault: input.vault }), createSendblueAdapter({ ...input.sendblue, vault: input.vault }), createAppleAdapter({ ...input.apple, vault: input.vault })]); proveProductionIntegrationAdapterRegistry(input.vault, adapters); return adapters; }

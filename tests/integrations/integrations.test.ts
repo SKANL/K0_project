@@ -9,6 +9,7 @@ import {
   createComposioAdapter,
   createIntegrationController,
   createProductionIntegrationAdapters,
+  proveProductionIntegrationAdapterRegistry,
   createProviderSecretPort,
   createSendblueAdapter,
   createWebhookSignature,
@@ -24,6 +25,7 @@ const NOW = 1_741_506_400_000;
 function testProductionVault() {
   const values = new Map<string, string>();
   return createProtectedVaultPort({
+    backend: { platform: "windows", provider: "windows-credential-manager", version: "1.0.0", approval: "approved" },
     put: (tenantId, key, value) => values.set(`${tenantId}\u0000${key}`, value),
     get: (tenantId, key) => values.get(`${tenantId}\u0000${key}`)
   });
@@ -168,6 +170,10 @@ describe("integration remediation", () => {
       expect(Object.keys(contract.limits).length).toBeGreaterThan(0);
       await expect(contract.health()).resolves.toMatchObject({ healthy: true });
     }
+    const proof = proveProductionIntegrationAdapterRegistry(vault, providers);
+    expect(proof.providers).toEqual(["composio", "sendblue", "apple"]);
+    for (const providerName of proof.providers) expect(proof.registry.describe(providerName)).toMatchObject({ name: providerName, credentialReference: `vault://${providerName}` });
+    expect(() => proveProductionIntegrationAdapterRegistry(vault, [{ ...composio, capability: { ...composio.capability, credentialReference: "vault://wrong" } } as any, sendblue, apple])).toThrow("INTEGRATION_ADAPTER_CREDENTIAL_REFERENCE_INVALID");
   });
 
   it("R3/R15: refuses production construction without a vault and resolves every provider credential by tenant reference when executing", async () => {
@@ -177,6 +183,7 @@ describe("integration remediation", () => {
     expect(() => createComposioAdapter({ vault: testOnlyVault, toolkitVersion: "2026.9.1" } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
     expect(() => createSendblueAdapter({ vault: testOnlyVault } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
     expect(() => createAppleAdapter({ vault: testOnlyVault } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
+    expect(() => createProductionIntegrationAdapters({ vault: { boundary: "production", put: () => undefined, get: () => ({ status: "unsupported", code: "VAULT_UNSUPPORTED" }) } } as any)).toThrow("VAULT_BACKEND_UNAPPROVED");
     const vault = testProductionVault();
     for (const providerName of ["composio", "sendblue", "apple"] as const) vault.put("tenant-a", providerName, `${providerName}-credential`);
     const credentials: string[] = [];
