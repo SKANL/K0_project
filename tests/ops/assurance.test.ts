@@ -68,4 +68,33 @@ describe("commercial assurance controls", () => {
     releases.activate(r1); releases.activate(r2);
     expect(releases.rollback("r1", { approvedBy: "release-bot", timestamp: 3 })).toMatchObject({ activeReleaseId: "r1", rollbackOf: "r2", verification: "verified" });
   });
+
+  it("R18: persists encrypted schema-bound snapshots and restores them only through isolated audited, indexed, idempotent ports", async () => {
+    const events: unknown[] = [];
+    const storage = new Map<string, string>();
+    const backup = createEncryptedBackupCoordinator({
+      retainSnapshots: 2, maxRpoMs: 10, maxRtoMs: 10, schemaVersion: "v2",
+      crypto: { encrypt: (plain) => `cipher:${plain}`, decrypt: (cipher) => cipher.startsWith("cipher:") ? cipher.slice(7) : (() => { throw new Error("CRYPTO_INVALID"); })() },
+      storage: { put: (key, value) => storage.set(key, value), get: (key) => storage.get(key), remove: (key) => storage.delete(key) },
+      audit: { append: (event) => { events.push(event); } },
+      restoreTarget: { isolated: true, apply: async () => undefined }
+    });
+    const snapshot = await backup.export({ tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }] });
+    expect(snapshot).toMatchObject({ schemaVersion: "v2", ciphertext: expect.stringContaining("cipher:") });
+    expect(storage.size).toBe(1);
+    await expect(backup.restore({ snapshot, tenantId: "tenant-a", authorized: true, startedAt: 11, completedAt: 12, latestWriteAt: 5, idempotencyKey: "restore-1" })).resolves.toMatchObject({ restored: true, replayed: false, recordsRestored: 1 });
+    await expect(backup.restore({ snapshot, tenantId: "tenant-a", authorized: true, startedAt: 11, completedAt: 12, latestWriteAt: 5, idempotencyKey: "restore-1" })).resolves.toMatchObject({ restored: true, replayed: true });
+    expect(events).toHaveLength(1);
+    await expect(backup.restore({ snapshot: { ...snapshot, schemaVersion: "v1" }, tenantId: "tenant-a", authorized: true, startedAt: 11, completedAt: 12, latestWriteAt: 5, idempotencyKey: "restore-2" })).rejects.toThrow("RESTORE_SCHEMA_MISMATCH");
+    expect(backup.deleteTenant("tenant-a")).toEqual({ deletedSnapshots: 1 });
+    expect(storage.size).toBe(0);
+  });
+
+  it("R18: fails closed without production ports and makes migration rollback explicit", () => {
+    expect(() => createEncryptedBackupCoordinator({ retainSnapshots: 1, maxRpoMs: 1, maxRtoMs: 1 })).toThrow("BACKUP_PORTS_REQUIRED");
+    const migrations = createMigrationController();
+    migrations.expand("assurance-v2");
+    expect(migrations.rollback("assurance-v2")).toEqual({ version: "assurance-v2", state: "rolled_back" });
+    expect(() => migrations.rollback("assurance-v2")).toThrow("MIGRATION_ROLLBACK_DENIED");
+  });
 });
