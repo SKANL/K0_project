@@ -1,0 +1,18 @@
+export type MemoryTier = "short" | "long" | "permanent";
+export type Consent = "granted" | "withdrawn" | "expired";
+export type Memory = { workspaceId: string; content: string; fingerprint: string; tier: MemoryTier; consent: Consent; retentionUntil: number; provenance: "trusted" | "untrusted"; sourceAt: number; sourceIds: string[]; semanticKey: string; lineage: string[]; deleted?: boolean; superseded?: boolean; embedding?: { model: string; version: string; dimension: number; normalized: boolean; values: number[] } };
+export type MemoryInput = Omit<Memory, "fingerprint" | "lineage" | "sourceIds" | "semanticKey" | "deleted" | "superseded" | "embedding"> & { sourceId?: string; semanticKey?: string };
+const fingerprint = (value: string) => { let hash = 2166136261; for (const char of value.trim().toLowerCase()) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619); return `fnv1a-${(hash >>> 0).toString(16)}`; };
+const canonical = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+const restrictiveConsent = (a: Consent, b: Consent): Consent => ({ granted: 0, expired: 1, withdrawn: 2 }[a] >= { granted: 0, expired: 1, withdrawn: 2 }[b] ? a : b);
+export function ingestMemory(input: MemoryInput, existing: Memory[] = []) {
+  const key = fingerprint(`${input.workspaceId}:${input.content}`); const match = existing.find((memory) => memory.fingerprint === key && !memory.deleted);
+  const sourceIds = [input.sourceId ?? key];
+  if (!match) return { status: "created" as const, memory: { ...input, fingerprint: key, sourceIds, semanticKey: input.semanticKey ?? canonical(input.content), lineage: sourceIds } as Memory };
+  if (canonical(match.content) !== canonical(input.content)) throw new Error("FINGERPRINT_COLLISION");
+  if (match.semanticKey !== (input.semanticKey ?? canonical(input.content))) throw new Error("SEMANTIC_INCOMPATIBLE");
+  const mergedSources = [...new Set([...match.sourceIds, ...sourceIds])].sort();
+  return { status: "merged" as const, memory: { ...match, sourceAt: Math.max(match.sourceAt, input.sourceAt), sourceIds: mergedSources, lineage: [...new Set([...match.lineage, ...mergedSources])].sort(), consent: restrictiveConsent(match.consent, input.consent), retentionUntil: Math.min(match.retentionUntil, input.retentionUntil), provenance: (match.provenance === "untrusted" || input.provenance === "untrusted" ? "untrusted" : "trusted") as "trusted" | "untrusted" } as Memory };
+}
+export function retrieveMemories(memories: Memory[], input: { workspaceId: string; now: number; forAction: boolean }) { const dimensions = new Set(memories.filter((memory) => memory.workspaceId === input.workspaceId && memory.embedding).map((memory) => memory.embedding!.dimension)); if (dimensions.size > 1) throw new Error("MIXED_EMBEDDING_DIMENSION"); return memories.filter((memory) => memory.workspaceId === input.workspaceId && memory.consent === "granted" && memory.retentionUntil >= input.now && !memory.deleted && !memory.superseded && (!input.forAction || memory.provenance === "trusted")); }
+export function migrateEmbedding(source: { memory: Memory; embedding: { model: string; version: string; dimension: number; normalized: boolean; values: number[] } }, target: { model: string; version: string; dimension: number; normalized: boolean; offline: boolean }) { if (source.embedding.model === target.model && source.embedding.version === target.version && source.embedding.dimension === target.dimension && source.embedding.normalized === target.normalized) return { status: "unchanged" as const }; return target.offline ? { status: "queued_offline" as const, reason: "EMBEDDING_REBUILD_REQUIRED" as const } : { status: "rebuild_required" as const, reason: "EMBEDDING_REBUILD_REQUIRED" as const }; }
