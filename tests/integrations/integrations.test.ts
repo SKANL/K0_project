@@ -5,6 +5,7 @@ import schema from "../../convex/schema.js";
 import { api } from "../../convex/_generated/api.js";
 import {
   appleCapabilityMatrix,
+  createAppleAdapter,
   createComposioAdapter,
   createIntegrationController,
   createProviderSecretPort,
@@ -12,13 +13,14 @@ import {
   createWebhookSignature,
   verifyWebhook,
   type IntegrationProviderPort,
+  type IntegrationCapabilityContract,
 } from "../../packages/adapters/src/integrations/index.js";
 
 const modules = import.meta.glob("../../convex/**/*.ts");
 const NOW = 1_741_506_400_000;
 
 function provider(): IntegrationProviderPort {
-  return { provider: "sendblue", toolkitVersion: "2026-08", connect: async () => ({ externalAccountId: "account-1" }), execute: async () => ({ providerDeliveryId: "delivery-1", state: "sent", costMicros: 12, latencyMs: 34 }), reconcile: async () => ({ state: "delivered", providerDeliveryId: "delivery-1" }) };
+  return { provider: "sendblue", toolkitVersion: "2026-08", capability: { version: "integration-capability/v1", capabilities: ["message.send"], limits: { maxRequests: 1 }, credentialReference: "vault://sendblue", health: async () => ({ healthy: true }) }, connect: async () => ({ externalAccountId: "account-1" }), execute: async () => ({ providerDeliveryId: "delivery-1", state: "sent", costMicros: 12, latencyMs: 34 }), reconcile: async () => ({ state: "delivered", providerDeliveryId: "delivery-1" }) };
 }
 
 async function setup() {
@@ -140,5 +142,18 @@ describe("integration remediation", () => {
     const connection = { id: "conn", provider: "sendblue", tenantId: "tenant", userId: "user", scopes: ["message.send"], toolkitVersion: "api", externalAccountId: "account", state: "active" } as const;
     await expect(adapter.execute({ connection, operation: "message.send", idempotencyKey: "delivery-2", metadata: { destination: "+15551234567" } })).resolves.toMatchObject({ state: "error", costMicros: 0, latencyMs: 0 });
     await expect(adapter.reconcile({ connection, idempotencyKey: "delivery-2", providerDeliveryId: "delivery-2" })).resolves.toEqual({ state: "unknown", providerDeliveryId: "delivery-2" });
+  });
+
+  it("uses one health, limits, and credential-reference capability contract for every provider", async () => {
+    const composio = createComposioAdapter({ toolkitVersion: "2026.9.1", connect: async () => "account", execute: async () => ({ state: "sent", costMicros: 1, latencyMs: 1 }), reconcile: async () => ({ state: "sent" }) });
+    const sendblue = createSendblueAdapter({ connect: async () => "account", lookupDestinationCapability: async () => ({ capable: true }), send: async () => ({ state: "sent", costMicros: 1, latencyMs: 1 }), status: async () => ({ state: "sent" }) });
+    const apple = createAppleAdapter();
+    const contracts: readonly IntegrationCapabilityContract[] = [composio.capability, sendblue.capability, apple.capability];
+    for (const contract of contracts) {
+      expect(contract.version).toBe("integration-capability/v1");
+      expect(contract.credentialReference).toMatch(/^vault:\/\//);
+      expect(Object.keys(contract.limits).length).toBeGreaterThan(0);
+      await expect(contract.health()).resolves.toMatchObject({ healthy: true });
+    }
   });
 });
