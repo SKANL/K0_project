@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a reproducible product defect.
+title: "[bug]: "
+labels: []
+body:
+  - type: textarea
+    attributes:
+      label: Reproduction
+      description: Include the smallest safe reproduction.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Safety
+      options:
+        - label: I removed secrets and personal data.
+          required: true
