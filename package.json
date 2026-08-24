@@ -4,17 +4,23 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "build:product": "node apps/product/build.mjs",
+    "build": "npm run build:product && cargo build --manifest-path apps/product/src-tauri/Cargo.toml --locked",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "test:foundation": "vitest run tests/foundation"
   },
   "devDependencies": {
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^22.0.0",
     "convex-test": "0.0.54",
+    "esbuild": "^0.27.7",
+    "jsdom": "^26.1.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
   "dependencies": {
+    "@tauri-apps/api": "2.9.0",
     "convex": "1.42.1"
   }
 }

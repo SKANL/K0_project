@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "description": "Main window only; no filesystem capability is granted. The sole IPC command returns the fixed $APPDATA/K0 boundary.",
+  "description": "Main window only. No filesystem, shell, HTTP, or browser plugin capability is granted. Product IPC exposes only named contract commands.",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

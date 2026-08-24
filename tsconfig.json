@@ -7,5 +7,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["convex/**/*.ts", "packages/**/*.ts", "tests/**/*.ts"]
+  "include": ["apps/product/src/**/*.ts", "convex/**/*.ts", "packages/**/*.ts", "tests/**/*.ts"]
 }
