@@ -16,10 +16,18 @@ import {
   type IntegrationProviderPort,
   type IntegrationCapabilityContract,
 } from "../../packages/adapters/src/integrations/index.js";
-import { createInMemoryVault } from "../../packages/assurance/src/index.js";
+import { createProtectedVaultPort, createTestOnlyInMemoryVault } from "../../packages/assurance/src/index.js";
 
 const modules = import.meta.glob("../../convex/**/*.ts");
 const NOW = 1_741_506_400_000;
+
+function testProductionVault() {
+  const values = new Map<string, string>();
+  return createProtectedVaultPort({
+    put: (tenantId, key, value) => values.set(`${tenantId}\u0000${key}`, value),
+    get: (tenantId, key) => values.get(`${tenantId}\u0000${key}`)
+  });
+}
 
 function provider(): IntegrationProviderPort {
   return { provider: "sendblue", toolkitVersion: "2026-08", capability: { version: "integration-capability/v1", capabilities: ["message.send"], limits: { maxRequests: 1 }, credentialReference: "vault://sendblue", health: async () => ({ healthy: true }) }, connect: async () => ({ externalAccountId: "account-1" }), execute: async () => ({ providerDeliveryId: "delivery-1", state: "sent", costMicros: 12, latencyMs: 34 }), reconcile: async () => ({ state: "delivered", providerDeliveryId: "delivery-1" }) };
@@ -51,7 +59,7 @@ describe("integration remediation", () => {
     const connected = await controller.connect({ provider: "sendblue", tenantId: "tenant-a", userId: "alice", scopes: ["message.send"], authorizationCode: "secret" });
     await expect(controller.execute({ provider: "sendblue", tenantId: "tenant-a", userId: "alice", connectionId: connected.id!, operation: "message.send", idempotencyKey: "delivery-a", metadata: { destination: "+15551234567" } })).resolves.toMatchObject({ state: "sent", audit: { costMicros: 12, latencyMs: 34 } });
     await expect(controller.execute({ provider: "sendblue", tenantId: "tenant-a", userId: "alice", connectionId: connected.id!, operation: "message.send", idempotencyKey: "delivery-b", metadata: { destination: "+15551234567" }, toolInput: { apiKey: "do-not-leak" } as any })).resolves.toMatchObject({ state: "denied", code: "INTEGRATION_SECRET_INPUT_DENIED" });
-    const adapter = createSendblueAdapter({ vault: createInMemoryVault({ supported: true }), connect: async () => "s", lookupDestinationCapability: async () => ({ capable: true }), send: async () => ({ state: "sent", costMicros: 1, latencyMs: 2 }), status: async () => ({ state: "delivered" }) });
+    const adapter = createSendblueAdapter({ vault: testProductionVault(), connect: async () => "s", lookupDestinationCapability: async () => ({ capable: true }), send: async () => ({ state: "sent", costMicros: 1, latencyMs: 2 }), status: async () => ({ state: "delivered" }) });
     await expect(adapter.execute({ connection: connected as any, operation: "message.send", idempotencyKey: "x", metadata: { destination: "bad" } })).resolves.toMatchObject({ state: "error" });
     expect(appleCapabilityMatrix({ platform: "ios", permission: "granted", consent: "granted" }).iMessage).toMatchObject({ available: false, fallback: "manual_share" });
   });
@@ -110,7 +118,7 @@ describe("integration remediation", () => {
   });
 
   it("requires a non-empty semantic Composio toolkit version and persists it on the connection", async () => {
-    const vault = createInMemoryVault({ supported: true });
+    const vault = testProductionVault();
     expect(() => createComposioAdapter({ vault, toolkitVersion: "pinned", connect: async () => "account", execute: async () => ({ state: "sent", costMicros: 1, latencyMs: 1 }), reconcile: async () => ({ state: "sent" }) })).toThrow("COMPOSIO_TOOLKIT_VERSION_INVALID");
     const adapter = createComposioAdapter({ vault, toolkitVersion: "2026.9.1", connect: async () => "account", execute: async () => ({ state: "sent", costMicros: 1, latencyMs: 1 }), reconcile: async () => ({ state: "sent" }) });
     const controller = createIntegrationController({ providers: [adapter] });
@@ -141,18 +149,19 @@ describe("integration remediation", () => {
   });
 
   it("denies a Sendblue destination without capability and preserves provider delivery reconciliation semantics", async () => {
-    const adapter = createSendblueAdapter({ vault: createInMemoryVault({ supported: true }), connect: async () => "account", lookupDestinationCapability: async () => ({ capable: false }), send: async () => ({ state: "sent", costMicros: 1, latencyMs: 2, providerDeliveryId: "should-not-send" }), status: async () => ({ state: "unknown", providerDeliveryId: "delivery-2" }) });
+    const adapter = createSendblueAdapter({ vault: testProductionVault(), connect: async () => "account", lookupDestinationCapability: async () => ({ capable: false }), send: async () => ({ state: "sent", costMicros: 1, latencyMs: 2, providerDeliveryId: "should-not-send" }), status: async () => ({ state: "unknown", providerDeliveryId: "delivery-2" }) });
     const connection = { id: "conn", provider: "sendblue", tenantId: "tenant", userId: "user", scopes: ["message.send"], toolkitVersion: "api", externalAccountId: "account", state: "active" } as const;
     await expect(adapter.execute({ connection, operation: "message.send", idempotencyKey: "delivery-2", metadata: { destination: "+15551234567" } })).resolves.toMatchObject({ state: "error", costMicros: 0, latencyMs: 0 });
     await expect(adapter.reconcile({ connection, idempotencyKey: "delivery-2", providerDeliveryId: "delivery-2" })).resolves.toEqual({ state: "unknown", providerDeliveryId: "delivery-2" });
   });
 
   it("uses one health, limits, and credential-reference capability contract for every provider", async () => {
-    const vault = createInMemoryVault({ supported: true });
+    const vault = testProductionVault();
     const composio = createComposioAdapter({ vault, toolkitVersion: "2026.9.1", connect: async () => "account", execute: async () => ({ state: "sent", costMicros: 1, latencyMs: 1 }), reconcile: async () => ({ state: "sent" }) });
     const sendblue = createSendblueAdapter({ vault, connect: async () => "account", lookupDestinationCapability: async () => ({ capable: true }), send: async () => ({ state: "sent", costMicros: 1, latencyMs: 1 }), status: async () => ({ state: "sent" }) });
     const apple = createAppleAdapter({ vault, execute: async () => ({ state: "error", costMicros: 0, latencyMs: 0 }) });
-    const contracts: readonly IntegrationCapabilityContract[] = [composio.capability, sendblue.capability, apple.capability];
+    const providers: readonly IntegrationProviderPort[] = [composio, sendblue, apple];
+    const contracts: readonly IntegrationCapabilityContract[] = providers.map((provider) => provider.capability);
     for (const contract of contracts) {
       expect(contract.version).toBe("integration-capability/v1");
       expect(contract.credentialReference).toMatch(/^vault:\/\//);
@@ -163,7 +172,12 @@ describe("integration remediation", () => {
 
   it("R3/R15: refuses production construction without a vault and resolves every provider credential by tenant reference when executing", async () => {
     expect(() => createProductionIntegrationAdapters({} as any)).toThrow("PROTECTED_VAULT_REQUIRED");
-    const vault = createInMemoryVault({ supported: true });
+    const testOnlyVault = createTestOnlyInMemoryVault({ supported: true });
+    expect(() => createProductionIntegrationAdapters({ vault: testOnlyVault } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
+    expect(() => createComposioAdapter({ vault: testOnlyVault, toolkitVersion: "2026.9.1" } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
+    expect(() => createSendblueAdapter({ vault: testOnlyVault } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
+    expect(() => createAppleAdapter({ vault: testOnlyVault } as any)).toThrow("PROTECTED_VAULT_PRODUCTION_REQUIRED");
+    const vault = testProductionVault();
     for (const providerName of ["composio", "sendblue", "apple"] as const) vault.put("tenant-a", providerName, `${providerName}-credential`);
     const credentials: string[] = [];
     const adapters = createProductionIntegrationAdapters({

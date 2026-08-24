@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { generateKeyPairSync, sign } from "node:crypto";
-import { canonicalReleaseManifest, createInMemoryVault, createProtectedVaultPort, createReleaseController, createAdapterRegistry, createCommercialLedger, createPrivacyController, createEncryptedBackupCoordinator, createMigrationController, createSetupDiagnostics, verifyReleaseManifest } from "../../packages/assurance/src/index.js";
+import { canonicalReleaseManifest, createTestOnlyInMemoryVault, createProtectedVaultPort, createReleaseController, createAdapterRegistry, createCommercialLedger, createPrivacyController, createEncryptedBackupCoordinator, createMigrationController, createSetupDiagnostics, verifyReleaseManifest } from "../../packages/assurance/src/index.js";
 
 describe("commercial assurance controls", () => {
   it("fails closed when the protected vault is unsupported and never returns a secret", () => {
-    const vault = createInMemoryVault({ supported: false });
+    const vault = createTestOnlyInMemoryVault({ supported: false });
     expect(() => vault.put("tenant-a", "sendblue", "secret")).toThrow("VAULT_UNSUPPORTED");
     expect(vault.get("tenant-a", "sendblue")).toEqual({ status: "unsupported", code: "VAULT_UNSUPPORTED" });
   });
@@ -14,7 +14,7 @@ describe("commercial assurance controls", () => {
   });
 
   it("requires uniform adapter health, limits, and vault credentials", () => {
-    const vault = createInMemoryVault({ supported: true }); vault.put("tenant-a", "sendblue", "secret");
+    const vault = createTestOnlyInMemoryVault({ supported: true }); vault.put("tenant-a", "sendblue", "secret");
     const registry = createAdapterRegistry(vault);
     expect(() => registry.register({ name: "bad", version: "1", capabilities: [], limits: {}, health: async () => ({ healthy: true }) })).toThrow("ADAPTER_CONTRACT_INVALID");
     registry.register({ name: "sendblue", version: "1", capabilities: ["sms"], limits: { maxRequests: 1 }, health: async () => ({ healthy: true }) });
@@ -40,13 +40,13 @@ describe("commercial assurance controls", () => {
     expect(privacy.sweep(21)).toEqual({ deleted: 0 });
   });
 
-  it("encrypts tenant backups, restores only in isolated targets, and rolls back staged migrations", async () => {
-    const backup = createEncryptedBackupCoordinator({ retainSnapshots: 1, maxRpoMs: 10, maxRtoMs: 10, encrypt: (plain) => `enc:${plain}`, decrypt: (cipher) => cipher.slice(4) });
-    const snapshot = await backup.export({ tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }] });
-    expect(snapshot.ciphertext).toContain("enc:"); expect(snapshot).not.toHaveProperty("records");
-    await expect(backup.restore({ snapshot, tenantId: "tenant-a", authorized: true, isolated: false, startedAt: 11, completedAt: 12, latestWriteAt: 5 })).rejects.toThrow("RESTORE_ISOLATION_REQUIRED");
-    await expect(backup.restore({ snapshot, tenantId: "tenant-a", authorized: true, isolated: true, startedAt: 11, completedAt: 12, latestWriteAt: 5 })).resolves.toMatchObject({ restored: true });
-    const migrations = createMigrationController(); migrations.expand("v2"); expect(migrations.rollback("v2")).toEqual({ version: "v2", state: "rolled_back" });
+  it("requires durable crypto, storage, audit, and isolated restore ports with no legacy fallback", () => {
+    const policy = { retainSnapshots: 1, maxRpoMs: 10, maxRtoMs: 10 };
+    expect(() => createEncryptedBackupCoordinator({ ...policy, encrypt: (plain: string) => plain, decrypt: (cipher: string) => cipher } as any)).toThrow("BACKUP_PORTS_REQUIRED");
+    const crypto = { encrypt: (plain: string) => `enc:${plain}`, decrypt: (cipher: string) => cipher.slice(4) };
+    expect(() => createEncryptedBackupCoordinator({ ...policy, crypto })).toThrow("BACKUP_PORTS_REQUIRED");
+    expect(() => createEncryptedBackupCoordinator({ ...policy, crypto, storage: { put: () => undefined, get: () => undefined, remove: () => undefined } })).toThrow("BACKUP_PORTS_REQUIRED");
+    expect(() => createEncryptedBackupCoordinator({ ...policy, crypto, storage: { put: () => undefined, get: () => undefined, remove: () => undefined }, audit: { append: () => undefined } })).toThrow("BACKUP_PORTS_REQUIRED");
   });
 
   it("reports setup diagnostics, feature flags and release checks without pretending unavailable prerequisites work", () => {
@@ -62,20 +62,23 @@ describe("commercial assurance controls", () => {
 
   it("R18: persists encrypted schema-bound snapshots and restores them only through isolated audited, indexed, idempotent ports", async () => {
     const events: unknown[] = [];
+    const restoredSnapshots: unknown[] = [];
     const storage = new Map<string, string>();
     const backup = createEncryptedBackupCoordinator({
       retainSnapshots: 2, maxRpoMs: 10, maxRtoMs: 10, schemaVersion: "v2",
       crypto: { encrypt: (plain) => `cipher:${plain}`, decrypt: (cipher) => cipher.startsWith("cipher:") ? cipher.slice(7) : (() => { throw new Error("CRYPTO_INVALID"); })() },
       storage: { put: (key, value) => storage.set(key, value), get: (key) => storage.get(key), remove: (key) => storage.delete(key) },
       audit: { append: (event) => { events.push(event); } },
-      restoreTarget: { isolated: true, apply: async () => undefined }
+      restoreTarget: { isolated: true, apply: async (restored) => { restoredSnapshots.push(restored); } }
     });
-    const snapshot = await backup.export({ tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }] });
+    const invariants = { authorization: ["auth:tenant-a"], audit: ["audit:tenant-a"], indexes: ["index:tenant-a"], ledger: ["ledger:tenant-a"], deletions: ["deletion:tenant-a"] };
+    const snapshot = await backup.export({ tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }], invariants });
     expect(snapshot).toMatchObject({ schemaVersion: "v2", ciphertext: expect.stringContaining("cipher:") });
     expect(storage.size).toBe(1);
     await expect(backup.restore({ snapshot, tenantId: "tenant-a", authorized: true, startedAt: 11, completedAt: 12, latestWriteAt: 5, idempotencyKey: "restore-1" })).resolves.toMatchObject({ restored: true, replayed: false, recordsRestored: 1 });
     await expect(backup.restore({ snapshot, tenantId: "tenant-a", authorized: true, startedAt: 11, completedAt: 12, latestWriteAt: 5, idempotencyKey: "restore-1" })).resolves.toMatchObject({ restored: true, replayed: true });
     expect(events).toHaveLength(1);
+    expect(restoredSnapshots).toEqual([{ tenantId: "tenant-a", schemaVersion: "v2", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }], invariants }]);
     await expect(backup.restore({ snapshot: { ...snapshot, schemaVersion: "v1" }, tenantId: "tenant-a", authorized: true, startedAt: 11, completedAt: 12, latestWriteAt: 5, idempotencyKey: "restore-2" })).rejects.toThrow("RESTORE_SCHEMA_MISMATCH");
     expect(backup.deleteTenant("tenant-a")).toEqual({ deletedSnapshots: 1 });
     expect(storage.size).toBe(0);
@@ -89,12 +92,20 @@ describe("commercial assurance controls", () => {
     expect(() => migrations.rollback("assurance-v2")).toThrow("MIGRATION_ROLLBACK_DENIED");
   });
 
+  it("R4: requires runtime capability equality after signature verification", () => {
+    const keys = generateKeyPairSync("ed25519");
+    const manifest = { version: "release-manifest/v1" as const, id: "runtime-r1", provenance: "sha256:abc", capabilities: ["browser", "vault"], activation: { approvedBy: "release-bot", timestamp: 1 } };
+    const signature = { version: "release-signature/v1" as const, algorithm: "Ed25519" as const, keyId: "release-2026", value: sign(null, Buffer.from(canonicalReleaseManifest(manifest)), keys.privateKey).toString("base64") };
+    expect(() => createReleaseController({ trustedKeys: { "release-2026": keys.publicKey } }).activate({ manifest, signature })).toThrow("RELEASE_RUNTIME_CAPABILITIES_REQUIRED");
+    expect(() => createReleaseController({ trustedKeys: { "release-2026": keys.publicKey }, runtimeCapabilities: ["browser"] }).activate({ manifest, signature })).toThrow("RELEASE_CAPABILITY_MISMATCH");
+  });
+
   it("R4: verifies canonical release manifests with trusted Ed25519 keys and rejects untrusted signature metadata", () => {
     const keys = generateKeyPairSync("ed25519");
     const manifest = { version: "release-manifest/v1" as const, id: "r1", provenance: "sha256:abc", capabilities: ["browser"], activation: { approvedBy: "release-bot", timestamp: 1 } };
     const signature = { version: "release-signature/v1" as const, algorithm: "Ed25519" as const, keyId: "release-2026", value: sign(null, Buffer.from(canonicalReleaseManifest(manifest)), keys.privateKey).toString("base64") };
     expect(verifyReleaseManifest({ manifest, signature }, { "release-2026": keys.publicKey })).toBe(true);
-    const releases = createReleaseController({ trustedKeys: { "release-2026": keys.publicKey } });
+    const releases = createReleaseController({ trustedKeys: { "release-2026": keys.publicKey }, runtimeCapabilities: ["browser"] });
     expect(releases.activate({ manifest, signature })).toMatchObject({ activeReleaseId: "r1", verification: "verified" });
     expect(() => releases.activate({ manifest, signature: { ...signature, keyId: "unknown" } })).toThrow("RELEASE_VERIFICATION_FAILED");
     expect(() => releases.activate({ manifest, signature: { ...signature, algorithm: "RSA-PSS" as any } })).toThrow("RELEASE_VERIFICATION_FAILED");
@@ -103,16 +114,21 @@ describe("commercial assurance controls", () => {
 
   it("R18: rejects snapshot bytes whose encrypted contents mix envelope version, schema, or tenant", async () => {
     const storage = new Map<string, string>();
-    const crypto = { encrypt: (plain: string) => `cipher:${plain}`, decrypt: (cipher: string) => cipher.slice(7) };
-    const backup = createEncryptedBackupCoordinator({ retainSnapshots: 1, maxRpoMs: 10, maxRtoMs: 10, schemaVersion: "v2", crypto, storage: { put: (key, value) => storage.set(key, value), get: (key) => storage.get(key), remove: (key) => storage.delete(key) }, audit: { append: () => undefined }, restoreTarget: { isolated: true, apply: () => undefined } });
-    const snapshot = await backup.export({ tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }] });
+    let decryptedPayload: string | undefined;
+    const crypto = { encrypt: (plain: string) => `cipher:${plain}`, decrypt: (cipher: string) => decryptedPayload ?? cipher.slice(7) };
+    let restoreApplications = 0;
+    const backup = createEncryptedBackupCoordinator({ retainSnapshots: 1, maxRpoMs: 10, maxRtoMs: 10, schemaVersion: "v2", crypto, storage: { put: (key, value) => storage.set(key, value), get: (key) => storage.get(key), remove: (key) => storage.delete(key) }, audit: { append: () => undefined }, restoreTarget: { isolated: true, apply: () => { restoreApplications += 1; } } });
+    const invariants = { authorization: ["auth:tenant-a"], audit: ["audit:tenant-a"], indexes: ["index:tenant-a"], ledger: ["ledger:tenant-a"], deletions: ["deletion:tenant-a"] };
+    const snapshot = await backup.export({ tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }], invariants });
     for (const payload of [
-      { version: "encrypted-snapshot/v2", schemaVersion: "v2", tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }] },
-      { version: "encrypted-snapshot/v1", schemaVersion: "v1", tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }] },
-      { version: "encrypted-snapshot/v1", schemaVersion: "v2", tenantId: "tenant-b", exportedAt: 10, records: [{ tenantId: "tenant-b", value: "x" }] }
+      { version: "encrypted-snapshot/v2", schemaVersion: "v2", tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }], invariants },
+      { version: "encrypted-snapshot/v1", schemaVersion: "v1", tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }], invariants },
+      { version: "encrypted-snapshot/v1", schemaVersion: "v2", tenantId: "tenant-b", exportedAt: 10, records: [{ tenantId: "tenant-b", value: "x" }], invariants: { ...invariants, authorization: ["auth:tenant-b"] } },
+      { version: "encrypted-snapshot/v1", schemaVersion: "v2", tenantId: "tenant-a", exportedAt: 10, records: [{ tenantId: "tenant-a", value: "x" }], invariants: { ...invariants, ledger: [] } }
     ]) {
-      storage.set(snapshot.id, crypto.encrypt(JSON.stringify(payload)));
-      await expect(backup.restore({ snapshot: { ...snapshot, ciphertext: storage.get(snapshot.id)! }, tenantId: "tenant-a", authorized: true, startedAt: 11, completedAt: 12, latestWriteAt: 5 })).rejects.toThrow(/RESTORE_(SNAPSHOT_INVALID|SCHEMA_MISMATCH|TENANT_DENIED)/);
+      decryptedPayload = JSON.stringify(payload);
+      await expect(backup.restore({ snapshot, tenantId: "tenant-a", authorized: true, startedAt: 11, completedAt: 12, latestWriteAt: 5 })).rejects.toThrow(/(?:RESTORE_(SNAPSHOT_INVALID|SCHEMA_MISMATCH|TENANT_DENIED)|DR_TARGET_VIOLATION)/);
     }
+    expect(restoreApplications).toBe(0);
   });
 });
