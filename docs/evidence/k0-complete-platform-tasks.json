@@ -757,7 +757,7 @@
         "command": "historical RED output unavailable",
         "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
       },
-      "greenCommit": "8192b32",
+      "greenCommit": "308d698",
       "triangulation": {
         "command": "npm test",
         "result": "current full suite: 17 files, 127 tests passed"
@@ -769,7 +769,7 @@
       },
       "focus": "canonical evidence integrity and retrospective disclosure",
       "rollback": "revert the green commit and its matching test contract",
-      "evidenceHash": "sha256:e84d3e1bfe0107d3dbf81ed2e24413185af66f6a5ad1355017069039138be03f"
+      "evidenceHash": "sha256:b6b2f63f3a457c30a473113cf61b64cb90f1b93772cfce9f7c168c7626adecce"
     }
   ]
 }
