@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+const VAULT_SERVICE: &str = "com.boop.k0.production-vault";
+const VAULT_BACKEND_VERSION: &str = "1.0.0";
+
 #[cfg(test)]
 mod ipc_tests;
 
@@ -14,6 +17,9 @@ enum ProductIpcCommand {
     BrowserHealth,
     BrowserNavigate,
     ResolveToolApproval,
+    VaultBackend,
+    VaultGet,
+    VaultPut,
 }
 
 fn resolve_registered_command(command: &str) -> Result<ProductIpcCommand, &'static str> {
@@ -23,6 +29,9 @@ fn resolve_registered_command(command: &str) -> Result<ProductIpcCommand, &'stat
         "browser_health" => Ok(ProductIpcCommand::BrowserHealth),
         "browser_navigate" => Ok(ProductIpcCommand::BrowserNavigate),
         "product_consent_resolve" => Ok(ProductIpcCommand::ResolveToolApproval),
+        "vault_backend" => Ok(ProductIpcCommand::VaultBackend),
+        "vault_get" => Ok(ProductIpcCommand::VaultGet),
+        "vault_put" => Ok(ProductIpcCommand::VaultPut),
         _ => Err("IPC_COMMAND_DENIED"),
     }
 }
@@ -33,7 +42,10 @@ fn capability_for(command: ProductIpcCommand) -> &'static str {
         | ProductIpcCommand::ProductShellContract
         | ProductIpcCommand::BrowserHealth
         | ProductIpcCommand::BrowserNavigate
-        | ProductIpcCommand::ResolveToolApproval => MAIN_CAPABILITY,
+        | ProductIpcCommand::ResolveToolApproval
+        | ProductIpcCommand::VaultBackend
+        | ProductIpcCommand::VaultGet
+        | ProductIpcCommand::VaultPut => MAIN_CAPABILITY,
     }
 }
 
@@ -89,8 +101,87 @@ struct ToolApprovalDecision {
     approved: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VaultGetRequest {
+    tenant_id: String,
+    key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VaultPutRequest {
+    tenant_id: String,
+    key: String,
+    value: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+struct VaultBackendResponse {
+    platform: &'static str,
+    provider: &'static str,
+    version: &'static str,
+    approval: &'static str,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+struct VaultGetResponse {
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<&'static str>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+struct VaultPutResponse {
+    status: &'static str,
+}
+
 fn authorize_handler(command_name: &str) -> Result<ProductIpcCommand, ProductIpcError> {
     authorize_registered_entry(command_name).map_err(ProductIpcError::denied)
+}
+
+fn vault_input_is_valid(tenant_id: &str, key: &str) -> bool {
+    !tenant_id.trim().is_empty() && !key.trim().is_empty()
+}
+
+fn vault_backend_response() -> Result<VaultBackendResponse, ProductIpcError> {
+    #[cfg(target_os = "windows")]
+    {
+        return Ok(VaultBackendResponse {
+            platform: "windows",
+            provider: "windows-credential-manager",
+            version: VAULT_BACKEND_VERSION,
+            approval: "approved",
+        });
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return Ok(VaultBackendResponse {
+            platform: "macos",
+            provider: "macos-keychain",
+            version: VAULT_BACKEND_VERSION,
+            approval: "approved",
+        });
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return Ok(VaultBackendResponse {
+            platform: "linux",
+            provider: "linux-secret-service",
+            version: VAULT_BACKEND_VERSION,
+            approval: "approved",
+        });
+    }
+    #[allow(unreachable_code)]
+    Err(ProductIpcError::denied("VAULT_UNSUPPORTED"))
+}
+
+fn native_vault_entry(tenant_id: &str, key: &str) -> Result<keyring::Entry, ProductIpcError> {
+    vault_backend_response()?;
+    keyring::Entry::new(VAULT_SERVICE, &format!("{tenant_id}\u{0}{key}"))
+        .map_err(|_| ProductIpcError::denied("VAULT_UNSUPPORTED"))
 }
 
 #[tauri::command]
@@ -133,6 +224,48 @@ fn product_consent_resolve(args: ToolApprovalDecision) -> Result<(), ProductIpcE
     Ok(())
 }
 
+/// Reports the one OS credential store compiled into this production binary.
+/// Unsupported targets are denied; this boundary intentionally has no fallback store.
+#[tauri::command]
+fn vault_backend() -> Result<VaultBackendResponse, ProductIpcError> {
+    authorize_handler("vault_backend")?;
+    vault_backend_response()
+}
+
+/// Reads a tenant-scoped credential only from the native OS vault.
+#[tauri::command]
+fn vault_get(args: VaultGetRequest) -> Result<VaultGetResponse, ProductIpcError> {
+    authorize_handler("vault_get")?;
+    if !vault_input_is_valid(&args.tenant_id, &args.key) {
+        return Err(ProductIpcError::denied("VAULT_INPUT_INVALID"));
+    }
+    match native_vault_entry(&args.tenant_id, &args.key)?.get_password() {
+        Ok(value) if !value.is_empty() => Ok(VaultGetResponse {
+            status: "available",
+            value: Some(value),
+            code: None,
+        }),
+        _ => Ok(VaultGetResponse {
+            status: "unsupported",
+            value: None,
+            code: Some("VAULT_UNSUPPORTED"),
+        }),
+    }
+}
+
+/// Writes a tenant-scoped credential only to the native OS vault.
+#[tauri::command]
+fn vault_put(args: VaultPutRequest) -> Result<VaultPutResponse, ProductIpcError> {
+    authorize_handler("vault_put")?;
+    if !vault_input_is_valid(&args.tenant_id, &args.key) || args.value.is_empty() {
+        return Err(ProductIpcError::denied("VAULT_INPUT_INVALID"));
+    }
+    native_vault_entry(&args.tenant_id, &args.key)?
+        .set_password(&args.value)
+        .map_err(|_| ProductIpcError::denied("VAULT_UNSUPPORTED"))?;
+    Ok(VaultPutResponse { status: "stored" })
+}
+
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -140,7 +273,10 @@ pub fn run() {
             k0_product_shell_contract,
             browser_health,
             browser_navigate,
-            product_consent_resolve
+            product_consent_resolve,
+            vault_backend,
+            vault_get,
+            vault_put
         ])
         .run(tauri::generate_context!())
         .expect("failed to run K0 Tauri application");
