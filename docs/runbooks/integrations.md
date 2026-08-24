@@ -18,6 +18,12 @@ Queue a delivery with `queueDelivery`; workers claim it with a monotonically inc
 - **Sendblue:** require E.164 (`+` plus 8–15 digits) and a capability lookup before sending. Model only `QUEUED`, `SENT`, `DELIVERED`, `ERROR`, and `UNKNOWN`; reconcile callbacks safely through the fenced outbox.
 - **Apple:** Apple remains an explicit manual fallback. `iMessage.available` is always false and returns `manual_share`.
 
+## R15 executable adapter registry
+
+Production composition uses `createExecutableAdapterRegistry` for Composio, Sendblue, Apple, browser, model runtime, storage, telemetry, and Convex. Each entry requires a runnable host with `health` and `execute`, a native-vault credential reference, declared numeric limits, and reconciliation where that host supports it. A capability declaration alone is rejected at registration.
+
+Treat unavailable dependencies as data, not a fallback: health returns `ADAPTER_HEALTH_UNAVAILABLE`, execution returns `ADAPTER_EXECUTION_UNAVAILABLE`, missing credentials return `VAULT_UNSUPPORTED`, and unavailable reconciliation returns `ADAPTER_RECONCILE_UNSUPPORTED`. Keep credentials inside the native-vault-to-host call; never log or place them in tool input.
+
 ## Rollback
 
 Disable integration writes and workers, drain or reconcile leased deliveries, then revert `convex/integrations.ts`, the integration schema/migration, adapter module, tests, and this runbook. Existing generic inbox/outbox records are unaffected.

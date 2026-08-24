@@ -18,6 +18,12 @@ This runtime fails closed when protected storage, signed release verification, o
 | Backup | Inject crypto, storage, audit, and isolated-restore ports; encrypt exports, schema-bind snapshots, and prove RPO/RTO. |
 | Privacy | Enforce regional allowlists and support consent; export/delete and retention are tenant-scoped. |
 
+## R3 native desktop vault
+
+The product runtime resolves credentials through only three typed Tauri commands: `vault_backend`, `vault_get`, and `vault_put`. The Rust boundary uses the native OS keyring: Windows Credential Manager, macOS Keychain, or Linux Secret Service/libsecret. The main Tauri capability remains `core:default`; no filesystem, shell, HTTP, browser-plugin, or broad OS permission is granted.
+
+On an unsupported target or unavailable native store, return `VAULT_UNSUPPORTED`. Do not enable a local-memory, browser-storage, file, or environment-variable fallback. Test fakes belong in test code and cannot satisfy a production vault boundary.
+
 ## Release checklist
 
 - [ ] Diagnostics are ready.

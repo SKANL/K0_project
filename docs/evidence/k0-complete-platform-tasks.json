@@ -1,0 +1,775 @@
+{
+  "schema": "k0-task-evidence/v1",
+  "change": "k0-complete-platform",
+  "generatedAt": "2026-08-24",
+  "tasks": [
+    {
+      "taskId": "K0-01",
+      "title": "Foundation contracts",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/foundation/contracts.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "8756952",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "foundation contracts and tenant policy",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:f3da007da2951291fe50fb585f67492331b63b31c0934c5bbccd1eab32d07ae6"
+    },
+    {
+      "taskId": "K0-02",
+      "title": "Tenant runtime boundary",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/foundation/convex-runtime.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "8756952",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "Convex identity and tenant isolation",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:ae9dd65caaf2891c7512417fea26f11cb60b39724240d4e0c04d8f856ca6a17d"
+    },
+    {
+      "taskId": "K0-03",
+      "title": "Foundation migrations",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/foundation/migration-and-fixtures.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "8756952",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "schema migration and fixtures",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:a38a1c2ca9a9f6ccb0bcb39394bf6e42a7ae90df1c2d9b3f3af97f3fc537b64b"
+    },
+    {
+      "taskId": "K0-04",
+      "title": "Platform boundary hardening",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/foundation/platform-boundaries.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "460aad5",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "external boundary fail-closed behavior",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:2419263d7dbfbee70ef8e3fc81b5238f20a5910974d983325f6cad8ddf6e8874"
+    },
+    {
+      "taskId": "K0-05",
+      "title": "Governed memory",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/memory/memory.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "1cfd736",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "tenant-scoped durable memory",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:245603d4f18d38c3a7c9549ba8156aa3fabcc082cde0c1ec38b0c523898c8b54"
+    },
+    {
+      "taskId": "K0-06",
+      "title": "Memory authorization",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/memory/memory.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "1cfd736",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "anonymous, stale, revoked, and cross-tenant denial",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:806d88b63c309ebb594d4c2316614dcba4cf2f0559157c468ffbddf88f095960"
+    },
+    {
+      "taskId": "K0-07",
+      "title": "Needle adapter boundary",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/memory/memory.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "1cfd736",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "provider-neutral embedding adapter",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:b15ef7f5531271d6667964db07c36563968749880a28ef99d88fd80fba03d215"
+    },
+    {
+      "taskId": "K0-08",
+      "title": "Browser capability contract",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/browser/browser.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "5569990",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "capability-scoped browser controller",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:617cb71212c244deac26538fa6c39a3ece08569dc93e4b146e4844533ac0eb0b"
+    },
+    {
+      "taskId": "K0-09",
+      "title": "Browser authorization and idempotency",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/browser/browser.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "5569990",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "safe origin and receipt fencing",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:63c96ab4d2760929da6d29bed8b3abbb30218bc66d2d710d80588016066f0ee5"
+    },
+    {
+      "taskId": "K0-10",
+      "title": "Browser reconciliation",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/browser/browser.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "5569990",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "uncertain effect recovery",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:cb32ad3054adfe5b247c5d9e5f0cdf94b9071208d82d8d0217ae11d48e43f635"
+    },
+    {
+      "taskId": "K0-11",
+      "title": "Durable provider connections",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/integrations/integrations.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "3b490dd",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "provider connection lifecycle",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:93c37be973b1e4986eaa3311ff0a65b768f1edef8270cbf79773868ee36ed44b"
+    },
+    {
+      "taskId": "K0-12",
+      "title": "Webhook admission",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/integrations/integrations.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "3b490dd",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "trusted HMAC and replay rejection",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:af65f5b51f6d17342dd207bc2dbde2cc146cf50f1f3ae47454cd22cc13d09806"
+    },
+    {
+      "taskId": "K0-13",
+      "title": "Fenced delivery reconciliation",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/integrations/integrations.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "3b490dd",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "outbox leasing and monotonic delivery state",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:195c245b93590f8d55fd0c3c7d0707cc4b7165f49e7781c9c83ef1d9a4310b23"
+    },
+    {
+      "taskId": "K0-14",
+      "title": "Automation schedules",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/automation/automation.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "f9816ca",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "durable scheduled automation",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:5e4f1db21cb449935e1fa1519cce7f678e5693b0b8328c5f179f62749455e6c2"
+    },
+    {
+      "taskId": "K0-15",
+      "title": "Liveness recovery",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/automation/automation.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "f9816ca",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "lease fencing and poison-work quarantine",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:ad763fbf508564592996a64fce955cbc95cf0e3eb0a4e6831073694659ae29bf"
+    },
+    {
+      "taskId": "K0-16",
+      "title": "Automation time correctness",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/automation/automation.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "f9816ca",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "DST and bounded retry behavior",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:9c1aab0d1f31471ac8887ef38988b26c764667f76f5a57e7dd6e5f853024ee84"
+    },
+    {
+      "taskId": "K0-17",
+      "title": "Harness runtime secret boundary",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/harness/runtime.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "c37b056",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "secret-free tool and context execution",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:e0a044c87c587ce1b2437d90a41ffa87166c4c97b2c8e5561fdcdcd9fd8be011"
+    },
+    {
+      "taskId": "K0-18",
+      "title": "Runtime RDD receipts",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/harness/runtime.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "c37b056",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "receipt lineage runtime contracts",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:88cf8d42ee59386e3cccb0b45929a670310813a27970dcfd5eb2d4c1c253b29c"
+    },
+    {
+      "taskId": "K0-19",
+      "title": "Product shell behavior",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/ui/product-shell.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "30cec33",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "accessible shell state machine",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:05590f9ae71aeaa3ade16f4ad79eae86282d7f3db38ba01064309bef97eed85f"
+    },
+    {
+      "taskId": "K0-20",
+      "title": "Tauri capability contract",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/ui/tauri-capability.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "30cec33",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "least-privilege desktop capability",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:42a16f99b7bd1a38099ad5f56e38c55fffa16d5e0f2949a5363b52419ff52abd"
+    },
+    {
+      "taskId": "K0-21",
+      "title": "Commercial ledger",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/billing/billing.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "89e3a88",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "idempotent usage and billing receipts",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:b4480448c4fca06def56fca35b3bed2bb39a14b496073199ed59481050d95a74"
+    },
+    {
+      "taskId": "K0-22",
+      "title": "Operational readiness",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/ops/ops.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "6a76c9f",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "durable health and degraded readiness",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:bcf0e92054367870c05e97441d7059301b54ebe07c936c26265bcf0d51b45b0e"
+    },
+    {
+      "taskId": "K0-23",
+      "title": "Encrypted backup restore",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/ops/assurance.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "97d926a",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "schema-bound isolated restore",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:b125b7baccb294609932272a380e0d522f5158217da102f42babb79bbb0a91b7"
+    },
+    {
+      "taskId": "K0-24",
+      "title": "Release verification",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/ops/assurance.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "1466228",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "signed provenance activation",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:ed840ce1885daa8c889d38daaf5f5ae97f305aa1474d1b24bc61f505ff8c843b"
+    },
+    {
+      "taskId": "K0-25",
+      "title": "Quality-gate CLI fail closed",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/ops/quality-gate-cli.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "6a76c9f",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "negative and positive evidence CLI paths",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:927ccb3167e1ca6b41516f40f3d22718421c7695390e75de7ed89e462608ddac"
+    },
+    {
+      "taskId": "K0-26",
+      "title": "Commercial migration completeness",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/foundation/migration-and-fixtures.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "89e3a88",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "migration table coverage",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:62ce7d0f20ec35d4e82ac76acbcb4fad634ec532babc617c3d3e496aa795dc4c"
+    },
+    {
+      "taskId": "K0-27",
+      "title": "Vault host approval",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/ops/assurance.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "51b4513",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "approved OS vault host branding",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:89706573dcfa213cebd91ecf936f50af521f344287818e5e40ffa038f53a58a1"
+    },
+    {
+      "taskId": "K0-28",
+      "title": "Integration production boundary",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/integrations/integrations.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "481a35c",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "production vault admission for integrations",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:57133667acc78c7f49ef440c788475fb3f212505e2c5c199b7ef8556f168872f"
+    },
+    {
+      "taskId": "K0-29",
+      "title": "R3 native OS vault IPC",
+      "status": "complete",
+      "evidenceMode": "observed-this-closure",
+      "testPath": "apps/product/src-tauri/src/ipc_tests.rs",
+      "red": {
+        "command": "cargo test --locked --manifest-path apps/product/src-tauri/Cargo.toml",
+        "result": "unresolved vault IPC imports (exit 1)"
+      },
+      "greenCommit": "8192b32",
+      "triangulation": {
+        "command": "cargo test --locked --manifest-path apps/product/src-tauri/Cargo.toml",
+        "result": "5 Rust tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "typed Tauri commands backed by native OS keyring",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:d44910e5f0e338402c4d383354db84636ae60c44cd85ab44c083e9726c76da30"
+    },
+    {
+      "taskId": "K0-30",
+      "title": "R15 executable adapter registry",
+      "status": "complete",
+      "evidenceMode": "observed-this-closure",
+      "testPath": "tests/adapters/production.test.ts",
+      "red": {
+        "command": "npx vitest run tests/adapters/production.test.ts",
+        "result": "missing adapter module and provider-offline assertion (exit 1)"
+      },
+      "greenCommit": "8192b32",
+      "triangulation": {
+        "command": "npx vitest run tests/adapters/production.test.ts",
+        "result": "3 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "real host execution, health, limits, credentials, and reconciliation",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:eef2ff7df58e370ed63fa2d6ea0b61fb95886e813da1e460714bc598702d504d"
+    },
+    {
+      "taskId": "K0-31",
+      "title": "Closure regression suite",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/adapters/production.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "8192b32",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "cross-boundary native vault and adapter regression safety net",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:3db0888a2ec8da21da3e263b8ff9d55ce8b2ef3b43d4adda57ab8191da3b8c03"
+    },
+    {
+      "taskId": "K0-32",
+      "title": "Closure evidence contract",
+      "status": "complete",
+      "evidenceMode": "retrospective-current-contract",
+      "testPath": "tests/foundation/closure-evidence.test.ts",
+      "red": {
+        "command": "historical RED output unavailable",
+        "result": "retrospective: no historical output asserted; current executable contract is named in testPath"
+      },
+      "greenCommit": "8192b32",
+      "triangulation": {
+        "command": "npm test",
+        "result": "current full suite: 17 files, 127 tests passed"
+      },
+      "refactor": "kept the production boundary explicit and the test contract isolated",
+      "safetyNet": {
+        "command": "npm test && npm run typecheck",
+        "result": "current closure validation; recorded after implementation"
+      },
+      "focus": "canonical evidence integrity and retrospective disclosure",
+      "rollback": "revert the green commit and its matching test contract",
+      "evidenceHash": "sha256:e84d3e1bfe0107d3dbf81ed2e24413185af66f6a5ad1355017069039138be03f"
+    }
+  ]
+}
