@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a focused, user-visible improvement.
+title: "[feature]: "
+labels: ["type:feature"]
+body:
+  - type: textarea
+    attributes:
+      label: Problem
+      description: Describe the user problem or operational need, not only a preferred implementation.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed outcome
+      description: Describe the observable result and who benefits.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Alternatives considered
+      description: Note existing workarounds or alternatives.
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Safety
+      options:
+        - label: I removed secrets, personal data, and private operational details.
+          required: true
