@@ -9,6 +9,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "test:foundation": "vitest run tests/foundation",
+    "eval:test": "vitest run tests/evals",
     "eval:quality": "vite-node evals/quality-gates.ts",
     "release:check": "vite-node evals/quality-gates.ts --release-check",
     "convex:codegen": "npx convex codegen",
