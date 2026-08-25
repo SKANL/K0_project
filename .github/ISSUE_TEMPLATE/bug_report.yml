@@ -1,12 +1,24 @@
 name: Bug report
 description: Report a reproducible product defect.
 title: "[bug]: "
-labels: []
+labels: ["type:bug"]
 body:
   - type: textarea
     attributes:
       label: Reproduction
       description: Include the smallest safe reproduction.
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Version or commit
+      description: Provide the release version, tag, or commit where the defect occurs.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Environment
+      description: Include operating system, architecture, and relevant runtime details.
     validations:
       required: true
   - type: textarea

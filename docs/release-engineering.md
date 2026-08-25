@@ -1,12 +1,42 @@
-# K0 release engineering
+# K0 release engineering and versioning
 
 K0 ships only through the GitHub release workflow. Stable releases are fail-closed: a protected `v*` tag, GitHub OIDC, signing credentials, notarization credentials, checksums, provenance, and a successful cross-platform build are all required.
+
+## Versioning policy
+
+Stable releases use [Semantic Versioning](https://semver.org/) and annotated tags in the form `vMAJOR.MINOR.PATCH`. The tag is the release version; do not create a stable release from an untagged commit. Use the smallest version change compatible with the published behavior:
+
+| Change | Version increment |
+| --- | --- |
+| Incompatible public behavior | Major |
+| Backward-compatible feature | Minor |
+| Backward-compatible fix or documentation correction | Patch |
+
+Canary and beta are workflow-dispatch channels for pre-release validation. The stable option is intentionally rejected for a manual dispatch; stable promotion begins only from a `v*` tag.
 
 ## Quick path
 
 1. Merge only green `CI` results for Linux, Windows, macOS Intel, and macOS Apple Silicon.
-2. Create an annotated `v<semver>` tag on `main` as `SKANL`.
-3. Approve the GitHub `production` environment and verify the generated checksums, SBOM, provenance bundle, and release assets.
+2. Update [CHANGELOG.md](../CHANGELOG.md): move relevant entries from `Unreleased` into a `vMAJOR.MINOR.PATCH` heading.
+3. Create an annotated `vMAJOR.MINOR.PATCH` tag on the reviewed `main` commit as `SKANL`.
+4. Verify the tag triggers the `Release` workflow, then approve the GitHub `production` environment.
+5. Verify the generated checksums, SBOM, provenance bundle, GitHub attestation, and release assets before announcing availability.
+
+## Reproducible workflow
+
+The workflow installs dependencies with `npm ci`, runs the repository's release-assurance tests, injects the updater public key only into a temporary release configuration, builds signed updater artifacts, produces checksums and provenance, signs provenance through GitHub OIDC, and publishes the generated assets.
+
+Before creating a tag, reproduce the non-secret checks locally from a clean checkout:
+
+```sh
+npm ci
+npm run typecheck
+npm test
+npm run build:product
+npm run smoke:release -- --ci
+```
+
+The release workflow additionally requires protected environment approvals and maintainer-managed signing/notarization secrets; these cannot be reproduced from a contributor checkout.
 
 ## Release controls
 
